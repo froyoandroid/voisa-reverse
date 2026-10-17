@@ -67,16 +67,16 @@
             <span class="orb-core" id="orbCore">v</span>
           </div>
         </div>
+        <div class="deck">
+          <label class="sel lang-pill" title="Change language"><select id="lang" aria-label="Language"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label>
+          <button id="btnSearch" class="primary go-btn">Start</button>
+          <button id="btnTalk" class="go" title="Talk to the peer" hidden>Talk</button>
+          <button id="btnRecord" class="rec" title="Record the live call" hidden>Record</button>
+        </div>
         <div class="scope">
           <span class="scope-k">Incoming</span>
           <canvas id="wave" height="80"></canvas>
           <span id="wavestate" class="idle">No audio</span>
-        </div>
-        <div class="deck">
-          <label class="sel lang-pill"><span>Lang</span><select id="lang"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label>
-          <button id="btnSearch" class="primary go-btn">Start</button>
-          <button id="btnTalk" class="go" title="Talk to the peer" hidden>Talk</button>
-          <button id="btnRecord" class="rec" title="Record the live call" hidden>Record</button>
         </div>
         <div id="micBanner" class="micbanner hidden"><span>Mic blocked. You can only listen.</span><button id="btnMicRetry" class="mini">Retry</button></div>
       </section>
