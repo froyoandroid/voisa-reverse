@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,10 +87,7 @@ func New(projectRoot string) http.Handler {
 		http.ServeFile(w, r, lp)
 	})
 
-	mux.HandleFunc("GET /api/recordings", apiRecordings)
-	mux.HandleFunc("GET /api/recordings/{name}", apiRecordingFile)
-	mux.HandleFunc("DELETE /api/recordings/{name}", apiRecordingDelete)
-	mux.HandleFunc("DELETE /api/recordings", apiRecordingsClear)
+	recordingRoutes(mux)
 
 	return withNotFound(mux)
 }
@@ -350,84 +346,6 @@ func apiLog(w http.ResponseWriter, r *http.Request) {
 		lines = []string{}
 	}
 	writeJSON(w, 200, M{"path": "voisa.log", "total_lines": total, "bytes": len(data), "lines": lines})
-}
-
-// recordings (files left by the removed server-side engine)
-
-func recName(name string) bool {
-	return filepath.Base(name) == name && strings.HasPrefix(name, "incoming-")
-}
-
-func apiRecordings(w http.ResponseWriter, r *http.Request) {
-	ents, _ := os.ReadDir(users.For(w, r).Media())
-	files := []M{}
-	var total int64
-	for _, e := range ents {
-		n := e.Name()
-		if !strings.HasPrefix(n, "incoming-") || !(strings.HasSuffix(n, ".wav") || strings.HasSuffix(n, ".ivf")) {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		kind := "video"
-		if strings.HasSuffix(n, ".wav") {
-			kind = "audio"
-		}
-		files = append(files, M{"name": n, "bytes": info.Size(), "mtime": info.ModTime().Unix(), "kind": kind})
-		total += info.Size()
-	}
-	sort.Slice(files, func(i, j int) bool { return files[i]["mtime"].(int64) > files[j]["mtime"].(int64) })
-	writeJSON(w, 200, M{"files": files, "total_bytes": total})
-}
-
-func apiRecordingFile(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !recName(name) {
-		writeJSON(w, 400, M{"detail": "bad name"})
-		return
-	}
-	p := filepath.Join(users.For(w, r).Media(), name)
-	if st, err := os.Stat(p); err != nil || st.IsDir() {
-		writeJSON(w, 404, M{"detail": "not found"})
-		return
-	}
-	ct := "video/x-ivf"
-	if strings.HasSuffix(name, ".wav") {
-		ct = "audio/wav"
-	}
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
-	http.ServeFile(w, r, p)
-}
-
-func apiRecordingDelete(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !recName(name) {
-		writeJSON(w, 400, M{"detail": "bad name"})
-		return
-	}
-	if err := os.Remove(filepath.Join(users.For(w, r).Media(), name)); err != nil {
-		writeJSON(w, 404, M{"detail": "not found"})
-		return
-	}
-	writeJSON(w, 200, M{"deleted": name})
-}
-
-func apiRecordingsClear(w http.ResponseWriter, r *http.Request) {
-	n := 0
-	mediaDir := users.For(w, r).Media()
-	ents, _ := os.ReadDir(mediaDir)
-	for _, e := range ents {
-		name := e.Name()
-		if strings.HasPrefix(name, "incoming-") && (strings.HasSuffix(name, ".wav") || strings.HasSuffix(name, ".ivf")) {
-			if os.Remove(filepath.Join(mediaDir, name)) == nil {
-				n++
-			}
-		}
-	}
-	writeJSON(w, 200, M{"deleted": n})
 }
 
 // websocket
