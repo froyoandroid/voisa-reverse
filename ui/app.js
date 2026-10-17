@@ -60,7 +60,10 @@ function renderAcct() {
   // is a bearer credential (whoever reads it owns the account) and this page is
   // reachable over the network. Only the display name lands in the header.
   const head = $("acctHead");
-  if (head) head.textContent = acct.username ? `Signed in as ${acct.username}` : "";
+  if (head) head.textContent = acct.username || "assigning…";
+  const core = $("orbCore");
+  if (core && !core.classList.contains("has-peer"))
+    core.textContent = (acct.username || "v").trim()[0] || "v";
   const el = $("acct");
   if (!el) return;
   const row = (k, v) => v == null ? "" :
@@ -245,6 +248,10 @@ function callPaint() {
   }
   if (r) { r.hidden = CallState.mode !== "active"; }
   if (lang) lang.disabled = CallState.mode !== "idle";
+  const st = $("stage"), tt = $("stageTitle");
+  if (st) st.dataset.mode = CallState.mode;
+  if (tt) tt.textContent = CallState.mode === "idle" ? "Ready"
+    : CallState.mode === "searching" ? "Searching" : "On air";
   micPaint();
 }
 function callMode(m) { CallState.mode = m; CallState.busy = false; callPaint(); }
@@ -562,6 +569,8 @@ function showPeer(dialog, phase) {
       ? '<span class="tag wait">Incoming</span>'
       : '<span class="tag done">Ended</span>';
 
+  const core = $("orbCore");
+  if (core) { core.textContent = initial; core.style.setProperty("--peer", color); core.classList.add("has-peer"); }
   el.classList.remove("hidden");
   el.innerHTML = `
     <div class="face" style="background:${escapeHtml(color)}">${escapeHtml(initial)}</div>
@@ -576,6 +585,8 @@ function clearPeer() {
   peerInfo = null;
   const el = $("peer");
   if (el) { el.classList.add("hidden"); el.innerHTML = ""; }
+  const core = $("orbCore");
+  if (core) { core.textContent = "v"; core.style.removeProperty("--peer"); core.classList.remove("has-peer"); }
   // no peer now, so the status line becomes visible again
   const st = $("match");
   if (st) st.classList.remove("hidden");

@@ -46,34 +46,67 @@
       </button>
       <span class="topbar-title" id="topbarTitle">Call</span>
     </header>
-    <main>
+    <main class="room">
       <audio id="peerAudio" autoplay playsinline></audio>
-      <section class="panel call-panel">
-        <div class="call-status"><span class="dot off" id="headDot"></span><span id="headState">Connecting…</span><span class="head-ident" id="acctHead"></span></div>
-        <div class="kv hidden" id="acct"></div>
-        <div id="peer" class="peer hidden"></div>
-        <div id="match" class="match empty hidden"></div>
-        <div class="wavebox"><canvas id="wave" height="80"></canvas><div class="wavemeta"><span id="wavestate">No audio</span></div></div>
-        <div class="row call-controls"><label class="sel"><span>Language</span><select id="lang"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><button id="btnSearch" class="primary">Start</button><button id="btnRecord" class="rec" title="Record the live call" hidden>Record</button><button id="btnTalk" class="go" title="Talk to the peer" hidden>Talk</button></div>
-        <div id="micBanner" class="micbanner hidden"><span>Mic blocked — you are listen-only.</span><button id="btnMicRetry" class="mini">Retry</button></div>
+      <section class="stage" id="stage" data-mode="idle" aria-live="polite">
+        <div class="stage-top">
+          <span class="eyebrow">Voice · Channel 01</span>
+          <span class="status-chip"><span class="dot off" id="headDot"></span><span id="headState">Connecting…</span></span>
+        </div>
+        <div class="stage-body">
+          <div class="stage-copy">
+            <h1 class="stage-title" id="stageTitle">Ready</h1>
+            <p class="stage-who"><span class="who-k">You are</span> <span class="head-ident" id="acctHead">assigning…</span></p>
+            <div class="kv hidden" id="acct"></div>
+            <div id="peer" class="peer hidden"></div>
+            <div id="match" class="match empty hidden"></div>
+          </div>
+          <div class="orb" aria-hidden="true">
+            <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+            <span class="orb-core" id="orbCore">v</span>
+          </div>
+        </div>
+        <div class="scope">
+          <span class="scope-k">Incoming</span>
+          <canvas id="wave" height="80"></canvas>
+          <span id="wavestate" class="idle">No audio</span>
+        </div>
+        <div class="deck">
+          <label class="sel lang-pill"><span>Lang</span><select id="lang"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label>
+          <button id="btnSearch" class="primary go-btn">Start</button>
+          <button id="btnTalk" class="go" title="Talk to the peer" hidden>Talk</button>
+          <button id="btnRecord" class="rec" title="Record the live call" hidden>Record</button>
+        </div>
+        <div id="micBanner" class="micbanner hidden"><span>Mic blocked. You can only listen.</span><button id="btnMicRetry" class="mini">Retry</button></div>
       </section>
-      <section class="panel"><h2>Identity <span class="section-note">Advanced</span></h2><div class="row"><input id="deviceId" placeholder="Device ID"><button id="btnNew">New identity</button><button id="btnLogin">Use ID</button><button id="btnConnect" class="quiet">Reconnect</button><button id="btnShuffle" class="quiet" title="Change display name">Shuffle name</button><button id="btnIdSave" class="quiet">Save current</button></div><div class="hint">Connects on its own. Switch only if you must.</div><div id="savedList" class="savedlist"></div></section>
-      <section class="panel recordings-panel"><h2>Recordings <button id="btnRecClear" class="mini">Clear all</button></h2><div class="row"><button id="btnRecRefresh" class="quiet">Refresh</button><span class="hint" id="recInfo">Nothing recorded yet.</span></div><div id="recs" class="recs"></div></section>
+      <div class="sheets">
+        <section class="panel sheet">
+          <h2><span class="idx">01</span>Identity <span class="section-note">This tab only</span></h2>
+          <div class="row"><input id="deviceId" placeholder="Device ID"><button id="btnLogin">Use ID</button></div>
+          <div class="row chips"><button id="btnNew" class="quiet">New identity</button><button id="btnShuffle" class="quiet" title="Change display name">Shuffle name</button><button id="btnIdSave" class="quiet">Save current</button><button id="btnConnect" class="quiet">Reconnect</button></div>
+          <div id="savedList" class="savedlist"></div>
+        </section>
+        <section class="panel sheet recordings-panel">
+          <h2><span class="idx">02</span>Recordings <span><button id="btnRecRefresh" class="mini">Refresh</button> <button id="btnRecClear" class="mini">Clear all</button></span></h2>
+          <div class="hint" id="recInfo">Nothing recorded yet.</div>
+          <div id="recs" class="recs"></div>
+        </section>
+      </div>
     </main>
     <div id="view-mitm" class="view" hidden>
-      <section class="panel mitmbar"><h2>Relay <span class="section-note">Two isolated legs</span></h2><div class="row"><button id="btnMitmStart" class="go">Start both legs</button><button id="btnMitmStop" class="quiet">Stop both</button><button id="btnMitmBridge" class="on" title="Pass each leg's audio to the other leg">Bridge: On</button><button id="btnMitmRec">Record both</button><span class="hint" id="mitmHint"></span></div></section>
+      <section class="panel mitmbar"><div class="stage-top"><span class="eyebrow">Relay · Two isolated legs</span></div><h1 class="stage-title small-title">Relay</h1><div class="row deck"><button id="btnMitmStart" class="go">Start both legs</button><button id="btnMitmStop" class="quiet">Stop both</button><button id="btnMitmBridge" class="on" title="Pass each leg's audio to the other leg">Bridge: On</button><button id="btnMitmRec">Record both</button><span class="hint" id="mitmHint"></span></div></section>
       <div class="legs">
-        <section class="panel leg" id="leg-A"><h2>Leg A <span class="small">Peer side A</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="A"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legA-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section>
-        <section class="panel leg" id="leg-B"><h2>Leg B <span class="small">Peer side B</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="B"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legB-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section>
+        <section class="panel leg" id="leg-A" data-letter="A"><h2>Leg A <span class="small">Peer side A</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="A"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legA-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section><div class="spine" aria-hidden="true"><span class="spine-line"></span><span class="spine-knot">⇄</span><span class="spine-line"></span></div>
+        <section class="panel leg" id="leg-B" data-letter="B"><h2>Leg B <span class="small">Peer side B</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="B"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legB-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section>
       </div>
-      <section class="panel poolpanel"><h2>Identity pool <span class="hint" id="poolHint">Least recently used first</span></h2><div class="row"><button id="btnPoolAdd">+ Add</button><label class="num">Count <input type="number" id="poolCount" value="4" min="1" max="20"></label><button id="btnPoolRefresh" class="quiet">Refresh</button><button id="btnPoolClear" class="quiet">Clear all</button><span class="hint" id="poolSummary">—</span></div><div id="poolList" class="poollist"></div></section>
-      <section class="panel recpanel"><h2>Relay recordings <button id="btnRecRefreshMitm" class="mini">Refresh</button></h2><div class="hint">Saved on the server, verified playable on stop.</div><div id="recList" class="reclist"></div></section>
+      <section class="panel poolpanel sheet"><h2><span class="idx">03</span>Identity pool <span class="hint" id="poolHint">Least recently used first</span></h2><div class="row"><button id="btnPoolAdd">+ Add</button><label class="num">Count <input type="number" id="poolCount" value="4" min="1" max="20"></label><button id="btnPoolRefresh" class="quiet">Refresh</button><button id="btnPoolClear" class="quiet">Clear all</button><span class="hint" id="poolSummary">—</span></div><div id="poolList" class="poollist"></div></section>
+      <section class="panel recpanel sheet"><h2><span class="idx">04</span>Relay recordings <button id="btnRecRefreshMitm" class="mini">Refresh</button></h2><div class="hint">Saved on the server, verified playable on stop.</div><div id="recList" class="reclist"></div></section>
     </div>
     <div id="view-logs" class="view" hidden>
-      <section class="panel logpanel"><h2>Activity <span><button id="btnClear" class="mini">Clear</button> <a class="mini" id="lnkLog" href="/api/log/download" download>Download</a></span></h2><div id="log" class="log logfull"></div></section>
+      <section class="panel logpanel sheet"><h2><span class="idx">—</span>Activity <span><button id="btnClear" class="mini">Clear</button> <a class="mini" id="lnkLog" href="/api/log/download" download>Download</a></span></h2><div id="log" class="log logfull"></div></section>
     </div>
     <div id="view-settings" class="view" hidden>
-      <section class="panel raw-panel"><h2>Developer tools <span class="section-note">Raw event</span></h2><div class="row"><select id="evt"></select><input id="payload" placeholder='{"searchLanguage":"en"}'><button id="btnEmit">Send</button></div></section>
+      <section class="panel raw-panel sheet"><h2><span class="idx">—</span>Developer tools <span class="section-note">Raw event</span></h2><div class="row"><select id="evt"></select><input id="payload" placeholder='{"searchLanguage":"en"}'><button id="btnEmit">Send</button></div></section>
     </div>
   </div>
 </div>
