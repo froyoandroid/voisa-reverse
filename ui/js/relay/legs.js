@@ -65,9 +65,9 @@ function legInfo(leg) {
     row("Match", leg.matchId ? leg.matchId.slice(0, 8) : "—");
 }
 
-// Ask the server for a FRESH account for this leg and adopt it.
+// Ask the server for a brand-new account for this leg (never a pool one).
 async function legArm(leg) {
-  const j = await (await fetch("/api/new", { method: "POST" })).json();
+  const j = await (await fetch("/api/relay/fresh", { method: "POST" })).json();
   leg.cookie = j.cookie;
   leg.deviceId = j.deviceId;
   leg.username = null;
@@ -104,7 +104,8 @@ document.querySelectorAll(".leg [data-role=lang]").forEach((sel) => {
 
 async function legStart(leg, lang, seconds) {
   try {
-    if (!leg.cookie) await legArm(leg);
+    // every relay start gets brand-new identities (user rule)
+    await legArm(leg);
     send({ cmd: "mitm", leg: leg.key, act: "start",
            cookie: leg.cookie, deviceId: leg.deviceId,
            lang, seconds });

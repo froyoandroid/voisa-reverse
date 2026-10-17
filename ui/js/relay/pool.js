@@ -72,10 +72,10 @@ $("btnPoolAdd")?.addEventListener("click", async () => {
   btn.disabled = false; btn.textContent = "Add";
 });
 
-// per-leg: lease a different identity without touching the other leg
+// per-leg: a brand-new identity without touching the other leg
 async function legNewIdentity(leg) {
   try {
-    const j = await (await fetch("/api/new", { method: "POST" })).json();
+    const j = await (await fetch("/api/relay/fresh", { method: "POST" })).json();
     leg.cookie = j.cookie;
     leg.deviceId = j.deviceId;
     leg.username = null;
