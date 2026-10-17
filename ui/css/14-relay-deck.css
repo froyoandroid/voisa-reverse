@@ -54,3 +54,11 @@
 .relay-deck button { justify-content: flex-start; }
 .relay-deck button { padding-right: 26px; }
 .rd-main { min-width: 0; }
+
+/* The spine caption ("Waiting for both peers") is wider than the spine
+   column. Desktop: shorten each leg's language select and level meter on
+   the spine side so the caption sits in clear space between them. */
+@media (min-width: 721px) {
+  #leg-A .langsel, #leg-A .meter { margin-right: 64px; }
+  #leg-B .langsel, #leg-B .meter { margin-left: 64px; }
+}
