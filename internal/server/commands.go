@@ -313,6 +313,13 @@ func cmdMitm(s *Session, msg M) error {
 		s.send("mitm", M{"leg": leg, "what": "call", "phase": "idle", "matchId": nil})
 	case act == "signal":
 		legSignal(s, leg, msg)
+	case act == "next":
+		// the browser gave up on this match (WebRTC failed): requeue
+		r := sget(msg, "reason")
+		if r == "" {
+			r = "browser asked"
+		}
+		legNext(s, leg, r)
 	default:
 		s.log(fmt.Sprintf("mitm: bad act %q", act), "err")
 	}

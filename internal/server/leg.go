@@ -221,6 +221,23 @@ func (l *Leg) onCloseDialog(d M) {
 	go l.requeue()
 }
 
+// next drops the current match on purpose (the browser saw its WebRTC
+// connection fail or never connect) and searches again, the same way as when
+// the stranger leaves. Nothing happens when the leg holds no match.
+func (l *Leg) next(reason string) {
+	l.mu.Lock()
+	mid := l.matchID
+	l.matchID = nil
+	l.mu.Unlock()
+	if mid == nil || l.isStopped() {
+		return
+	}
+	l.log(fmt.Sprintf("[next] leaving %s: %s", py(mid), reason))
+	l.emit("close-dialog", M{"matchId": mid})
+	l.state(M{"phase": "closed", "matchId": nil})
+	go l.requeue()
+}
+
 func (l *Leg) requeue() {
 	if l.isStopped() {
 		l.log("[requeue] cancelled (leg was stopped)")
@@ -406,6 +423,15 @@ func legsStopAll(s *Session) {
 	s.mu.Unlock()
 	for _, k := range keys {
 		legStop(s, k)
+	}
+}
+
+func legNext(s *Session, key, reason string) {
+	s.mu.Lock()
+	l := s.legs[key]
+	s.mu.Unlock()
+	if l != nil {
+		l.next(reason)
 	}
 }
 
