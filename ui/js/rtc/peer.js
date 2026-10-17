@@ -13,6 +13,10 @@ const rtc = {
   micStream: null,
   micTrack: null,
   micState: "off",    // off | live | muted
+  audioSender: null,  // the call's one outgoing audio sender
+  upCtx: null,        // silent placeholder track until Talk
+  upStream: null,
+  upTrack: null,
   micDenied: false,
   pendingCandidates: [],
   waveCtx: null,
@@ -93,19 +97,34 @@ async function micEnsure() {
 function micCleanup() {
   try { rtc.micStream?.getTracks()?.forEach((t) => t.stop()); } catch (_) {}
   rtc.micStream = null; rtc.micTrack = null; rtc.micState = "off";
+  if (rtc.audioSender && rtc.upTrack) rtc.audioSender.replaceTrack(rtc.upTrack).catch(() => {});
   micPaint();
 }
-// Publish the mic mid-call via renegotiation. Keeps the working recvonly join
-// path untouched; adds a send m-line only when the user taps Talk.
-async function micAttachRenegotiate() {
-  if (!rtc.pc || !rtc.micTrack || CallState.mode !== "active") return;
-  if (rtc.pc.getSenders().find((s) => s.track === rtc.micTrack)) return;
-  rtc.pc.addTrack(rtc.micTrack, rtc.micStream);
-  const offer = await rtc.pc.createOffer();
-  await rtc.pc.setLocalDescription(offer);
-  await rtcGatherComplete(rtc.pc);
-  rtcSend({ offer: { type: "offer", sdp: rtc.pc.localDescription.sdp } });
-  logLine("mic: track published, renegotiated", "sys");
+// The call always carries one outgoing audio track: a silent placeholder until
+// the user taps Talk, then the mic, swapped in with replaceTrack. The peer
+// app ignores a mid-call renegotiation that adds a new audio m-line, so the
+// old "add the mic, then re-offer" path never reached them.
+function rtcSilentTrack() {
+  if (rtc.upTrack && rtc.upTrack.readyState === "live") return rtc.upTrack;
+  try {
+    const ctx = rtc.upCtx || (rtc.upCtx = new AudioContext());
+    const src = ctx.createConstantSource();
+    src.offset.value = 0;
+    const dst = ctx.createMediaStreamDestination();
+    src.connect(dst);
+    src.start();
+    rtc.upStream = dst.stream;
+    rtc.upTrack = dst.stream.getAudioTracks()[0] || null;
+  } catch (_) {
+    rtc.upStream = null; rtc.upTrack = null;
+  }
+  return rtc.upTrack;
+}
+async function micAttach() {
+  if (!rtc.audioSender || !rtc.micTrack) return;
+  if (rtc.audioSender.track === rtc.micTrack) return;
+  await rtc.audioSender.replaceTrack(rtc.micTrack);
+  logLine("mic: on the outgoing audio track", "sys");
 }
 
 async function rtcStart(matchId) {
@@ -114,13 +133,16 @@ async function rtcStart(matchId) {
   const pc = new RTCPeerConnection({ iceServers: rtc.iceServers || [] });
   rtc.pc = pc;
 
-  // Receive-only: we want the partner's audio. We publish no mic by default,
-  // so no permission prompt appears.
+  // Audio is sendrecv from the first offer. It carries a silent track (so no
+  // mic prompt) until Talk swaps the mic in with replaceTrack.
   //
   // BOTH audio and video m-lines are required. The server-side path added the
   // same pair; with audio alone the peer completes ICE and DTLS but then tears
   // the call down because its video leg has nowhere to go.
-  pc.addTransceiver("audio", { direction: "recvonly" });
+  const up = rtcSilentTrack();
+  rtc.audioSender = up
+    ? pc.addTrack(up, rtc.upStream)
+    : pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
   pc.addTransceiver("video", { direction: "recvonly" });
 
   pc.ontrack = (ev) => {

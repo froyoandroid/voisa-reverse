@@ -12,7 +12,8 @@ function setRecUI(on) {
 }
 $("btnRecord").onclick = () => send({ cmd: "record", on: !recOn });
 // Talk toggle: off -> live (acquire + publish), live -> muted, muted -> live.
-// Mute flips track.enabled only; the sender stays so no renegotiation needed.
+// Mute flips track.enabled only. The mic goes onto the call's existing audio
+// sender with replaceTrack, so Talk never renegotiates.
 async function micTalk() {
   if (CallState.mode !== "active") return;
   if (rtc.micTrack && rtc.micTrack.readyState === "ended") {
@@ -31,7 +32,7 @@ async function micTalk() {
   try {
     await micEnsure();
   } catch (_) { return; }
-  await micAttachRenegotiate();
+  await micAttach();
   rtc.micState = "live"; micPaint(); logLine("mic: live", "match");
 }
 $("btnTalk").onclick = () => micTalk();

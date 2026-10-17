@@ -41,6 +41,7 @@ async function rtcStop() {
     try { rtc.pc.close(); } catch (_) {}
     rtc.pc = null;
   }
+  rtc.audioSender = null;
   const el = $("peerAudio");
   if (el) el.srcObject = null;
   rtc.matchId = null;
