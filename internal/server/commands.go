@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"voisa/internal/users"
 
 	"voisa/internal/account"
 	"voisa/internal/logs"
@@ -39,12 +40,27 @@ func init() {
 	}
 }
 
+// needsUpstream: commands that act on Voisa, so the tab's identity is
+// created (or renewed after 24 hours) right before them.
+var needsUpstream = map[string]bool{
+	"emit": true, "search": true, "accept": true, "bufferdialog": true, "shuffle": true,
+}
+
 func dispatch(s *Session, msg M) {
 	name := msg["cmd"]
 	h := commands[sget(msg, "cmd")]
 	if h == nil {
 		s.log("unknown cmd: "+py(name), "sys")
 		return
+	}
+	if needsUpstream[sget(msg, "cmd")] {
+		inner := h
+		h = func(s *Session, m M) error {
+			if err := ensureUpstream(s); err != nil {
+				return err
+			}
+			return inner(s, m)
+		}
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -74,6 +90,13 @@ func identityCall(fn func() (account.Identity, error)) (account.Identity, error)
 	return account.Identity{}, last
 }
 
+// cmdConnect is sent on every page load (lazy) and when the user picks an
+// identity themselves (New identity, a saved one).
+//
+// Lazy: nothing is created or connected yet. The tab's remembered identity is
+// noted, and ensureUpstream picks the identity at the first action that needs
+// Voisa (Start, search, accept, ...). So opening the page never mints an
+// account or shows the browser online.
 func cmdConnect(s *Session, msg M) error {
 	// bump generation first so the UI drops stale events from the old socket
 	if g, ok := msg["gen"].(float64); ok {
@@ -82,44 +105,101 @@ func cmdConnect(s *Session, msg M) error {
 		s.mu.Unlock()
 	}
 	did, cookie := sget(msg, "deviceId"), sget(msg, "cookie")
-	var acct account.Identity
-	var err error
-	switch {
-	case cookie != "":
-		// the tab remembered its own identity
-		acct = account.Identity{DeviceID: did, Cookie: cookie}
-	case did != "":
-		acct, err = identityCall(func() (account.Identity, error) { return account.Register(did) })
-	default:
-		// no identity at all: mint a fresh one bound to this session
-		acct, err = identityCall(account.Fresh)
+	since, _ := msg["since"].(float64)
+	if truthy(msg["lazy"]) {
+		s.mu.Lock()
+		s.want = tabIdentity{deviceID: did, cookie: cookie, since: since}
+		s.mu.Unlock()
+		return nil
 	}
+	// The user chose this identity: it becomes the browser's identity, and its
+	// 24 hours start now.
+	if cookie == "" && did != "" {
+		acct, err := identityCall(func() (account.Identity, error) { return account.Register(did) })
+		if err != nil {
+			return err
+		}
+		cookie = acct.Cookie
+	}
+	if cookie == "" {
+		return s.useIdentity(s.mint(true))
+	}
+	if cookiesInUse(s)[cookie] {
+		s.log("that identity is in use by another session — this session gets its own", "warn")
+		return s.useIdentity(s.mint(false))
+	}
+	c := users.CallIdentity{DeviceID: did, Cookie: cookie, Since: account.Now()}
+	_ = s.user.SetIdentity(c)
+	return s.useIdentity(c, nil)
+}
+
+// ensureUpstream gives the tab a live Voisa identity before an action that
+// needs one. In order: the tab's own remembered identity, the browser's
+// identity (kept 24 hours, so it survives closing the tab), else a new one.
+// An identity past its 24 hours is replaced at the next action, never in the
+// middle of a call.
+func ensureUpstream(s *Session) error {
+	s.mu.Lock()
+	have := s.sio != nil // connected, or reconnecting on its own
+	cookie, since, inMatch, want := s.cookie, s.since, s.matchID != nil, s.want
+	s.mu.Unlock()
+	owner := s.user.Identity()
+	if have {
+		if users.Fresh(since) || inMatch {
+			return nil
+		}
+		s.log("this identity is 24 hours old — making a new one", "sys")
+		// replace the browser's identity too when this was it (or it expired)
+		return s.useIdentity(s.mint(cookie == owner.Cookie || !owner.Valid()))
+	}
+	inUse := cookiesInUse(s)
+	switch {
+	case want.cookie != "" && want.cookie == owner.Cookie && owner.Valid() && !inUse[owner.Cookie]:
+		return s.useIdentity(owner, nil)
+	case want.cookie != "" && want.cookie != owner.Cookie && users.Fresh(want.since) && !inUse[want.cookie]:
+		// this tab's own identity (a second tab got its own; a reload keeps it)
+		return s.useIdentity(users.CallIdentity{DeviceID: want.deviceID, Cookie: want.cookie, Since: want.since}, nil)
+	case owner.Valid() && !inUse[owner.Cookie]:
+		return s.useIdentity(owner, nil)
+	case owner.Valid():
+		// another open tab has the browser's identity: this tab gets its own
+		// and the browser's stays as it is
+		return s.useIdentity(s.mint(false))
+	default:
+		return s.useIdentity(s.mint(true))
+	}
+}
+
+// mint creates a new Voisa account. asOwner makes it the browser's identity.
+func (s *Session) mint(asOwner bool) (users.CallIdentity, error) {
+	acct, err := identityCall(account.Fresh)
+	if err != nil {
+		return users.CallIdentity{}, err
+	}
+	c := users.CallIdentity{DeviceID: acct.DeviceID, Cookie: acct.Cookie, Since: account.Now()}
+	if asOwner {
+		_ = s.user.SetIdentity(c)
+	}
+	s.log("new identity created", "match")
+	return c, nil
+}
+
+// useIdentity tells the tab its identity and connects with it, unless that
+// identity is already live on this tab.
+func (s *Session) useIdentity(c users.CallIdentity, err error) error {
 	if err != nil {
 		return err
 	}
-	// Identity is per session: never share one another live session holds.
-	if acct.Cookie != "" && cookiesInUse(s)[acct.Cookie] {
-		s.log("that identity is in use by another session — this session gets its own", "warn")
-		if acct, err = identityCall(account.Fresh); err != nil {
-			return err
-		}
-	}
-	accountMsg := M{"deviceId": acct.DeviceID, "cookie": acct.Cookie}
-	if acct.Created != 0 {
-		accountMsg["created"] = acct.Created
-	}
-	// Only reconnect when the identity actually changes: a page load also
-	// sends connect, and tearing down unconditionally killed a live call.
 	s.mu.Lock()
-	sameID := s.cookie == acct.Cookie
+	same := s.cookie == c.Cookie && s.sio != nil
+	s.since = c.Since
+	s.want = tabIdentity{deviceID: c.DeviceID, cookie: c.Cookie, since: c.Since}
 	s.mu.Unlock()
-	if sameID && s.connected() != nil {
-		s.send("account", accountMsg)
-		s.log("already connected (identity unchanged)", "sys")
+	s.send("account", M{"deviceId": c.DeviceID, "cookie": c.Cookie, "since": c.Since})
+	if same && s.connected() != nil {
 		return nil
 	}
-	s.send("account", accountMsg)
-	return s.connect(acct.Cookie)
+	return s.connect(c.Cookie)
 }
 
 func cmdEmit(s *Session, msg M) error {

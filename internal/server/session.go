@@ -74,11 +74,20 @@ type Session struct {
 	iceServers any
 	legs       map[string]*Leg
 	detached   bool
+	since      float64 // when this tab's current identity was taken
+	want       tabIdentity
 
 	wmu sync.Mutex
 }
 
 const connectAttempts = 4
+
+// tabIdentity is the identity a tab remembers (sessionStorage), sent on
+// page load. It is only used once the tab does something on the socket.
+type tabIdentity struct {
+	deviceID, cookie string
+	since            float64
+}
 
 func newSession(ws *websocket.Conn, u *users.User) *Session {
 	return &Session{ws: ws, cid: shortID(), user: u, legs: map[string]*Leg{}, iceCounts: map[string]int{}}
