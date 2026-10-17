@@ -25,4 +25,4 @@ __pycache__/
 bin/
 
 # per-user data: pools, saved identities (live cookies), logs
-users/
+/users/
