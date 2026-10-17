@@ -3,7 +3,7 @@
    Class hooks toggled by js/ are preserved:
    .hidden, .dot.on/.off, .nav.active, .pill[data-state],
    .match.empty/.searching/.active, .peer .tag.live/.wait/.done, .meter i,
-   .l.sys/.in/.out/.match/.err/.med, body.offline. */
+   .l.l-sys/-in/-out/-match/-err/-med, body.offline. */
 
 /* ---------- design tokens ---------- */
 /* Palette: colorhunt 000000 / 233D4D / FE7F2D / EAECF0.
