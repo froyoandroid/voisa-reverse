@@ -1324,8 +1324,10 @@ function mitmLegsIdle() {
 function mitmSyncToggle() {
   const start = $("btnMitmStart"), stop = $("btnMitmStop");
   if (!start || !stop) return;
-  start.disabled = false;           // always pressable: re-press = restart
-  stop.disabled = mitmLegsIdle();   // only means something while running
+  // one main control: Start while both legs are idle, Stop while either runs
+  const idle = mitmLegsIdle();
+  start.hidden = !idle; stop.hidden = idle;
+  start.disabled = false; stop.disabled = false;
 }
 function legInfo(leg) {
   const box = legEl(leg)?.querySelector(".leginfo");
@@ -1958,20 +1960,27 @@ let bridgeOn = true;
 $("btnMitmBridge")?.addEventListener("click", () => {
   bridgeOn = !bridgeOn;
   const btn = $("btnMitmBridge");
-  btn.textContent = `Bridge: ${bridgeOn ? "On" : "Muted"}`;
   btn.classList.toggle("on", bridgeOn);
+  btn.setAttribute("aria-pressed", String(bridgeOn));
+  if ($("bridgeCap")) $("bridgeCap").textContent = bridgeOn ? "Bridge on" : "Bridge muted";
   for (const leg of [LEGS.A, LEGS.B]) {
     if (leg.gain) leg.gain.gain.value = bridgeOn ? 1.0 : 0.0;
   }
   logLine(bridgeOn ? "Bridge on." : "Bridge muted.", bridgeOn ? "match" : "warn");
 });
 
+function recDeck(btn, on, live) {
+  btn.classList.toggle("on", on);
+  btn.setAttribute("aria-pressed", String(on));
+  btn.querySelector('[data-role="lbl"]').textContent = on ? "Recording" : "Record";
+  btn.querySelector('[data-role="sub"]').textContent = on ? (live ? "Tap to stop" : "Armed, waits for peers") : "Both legs";
+}
 $("btnMitmRec")?.addEventListener("click", () => {
   const anyRec = LEGS.A.recording || LEGS.B.recording;
   const btn = $("btnMitmRec");
   if (anyRec) {
     legRecordStop(LEGS.A); legRecordStop(LEGS.B);
-    btn.textContent = "Record both";
+    recDeck(btn, false);
     logLine("Recording stopped.", "sys");
     return;
   }
@@ -1980,7 +1989,7 @@ $("btnMitmRec")?.addEventListener("click", () => {
     if (leg.peerStream) { legRecordStart(leg, leg.peerStream); started++; }
     else leg.recording = true;   // arm it: starts when the peer connects
   }
-  btn.textContent = "Stop";
+  recDeck(btn, true, started);
   logLine(`Recording ${started ? `${started} live` : "armed"}.`, "sys");
 });
 
