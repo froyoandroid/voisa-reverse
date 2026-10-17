@@ -49,6 +49,7 @@
     <main class="room">
       <audio id="peerAudio" autoplay playsinline></audio>
       <section class="stage" id="stage" data-mode="idle" aria-live="polite">
+        <div class="shapes" aria-hidden="true"><i class="s-disc"></i><i class="s-arc"></i><i class="s-arc s-arc2"></i><i class="s-hatch"></i><i class="s-pip"></i><i class="s-grain"></i></div>
         <div class="stage-top">
           <span class="eyebrow">Voice · Channel 01</span>
           <span class="status-chip"><span class="dot off" id="headDot"></span><span id="headState">Connecting…</span></span>
@@ -79,7 +80,7 @@
         </div>
         <div id="micBanner" class="micbanner hidden"><span>Mic blocked. You can only listen.</span><button id="btnMicRetry" class="mini">Retry</button></div>
       </section>
-      <div class="sheets">
+      <aside class="rail sheets">
         <section class="panel sheet">
           <h2><span class="idx">01</span>Identity <span class="section-note">This tab only</span></h2>
           <div class="row"><input id="deviceId" placeholder="Device ID"><button id="btnLogin">Use ID</button></div>
@@ -91,10 +92,10 @@
           <div class="hint" id="recInfo">Nothing recorded yet.</div>
           <div id="recs" class="recs"></div>
         </section>
-      </div>
+      </aside>
     </main>
     <div id="view-mitm" class="view" hidden>
-      <section class="panel mitmbar"><div class="stage-top"><span class="eyebrow">Relay · Two isolated legs</span></div><h1 class="stage-title small-title">Relay</h1><div class="row deck"><button id="btnMitmStart" class="go">Start both legs</button><button id="btnMitmStop" class="quiet">Stop both</button><button id="btnMitmBridge" class="on" title="Pass each leg's audio to the other leg">Bridge: On</button><button id="btnMitmRec">Record both</button><span class="hint" id="mitmHint"></span></div></section>
+      <section class="panel mitmbar"><div class="shapes" aria-hidden="true"><i class="s-disc"></i><i class="s-arc"></i><i class="s-hatch"></i><i class="s-grain"></i></div><div class="stage-top"><span class="eyebrow">Relay · Two isolated legs</span></div><h1 class="stage-title small-title">Relay</h1><div class="row deck"><button id="btnMitmStart" class="go">Start both legs</button><button id="btnMitmStop" class="quiet">Stop both</button><button id="btnMitmBridge" class="on" title="Pass each leg's audio to the other leg">Bridge: On</button><button id="btnMitmRec">Record both</button><span class="hint" id="mitmHint"></span></div></section>
       <div class="legs">
         <section class="panel leg" id="leg-A" data-letter="A"><h2>Leg A <span class="small">Peer side A</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="A"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legA-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section><div class="spine" aria-hidden="true"><span class="spine-line"></span><span class="spine-knot">⇄</span><span class="spine-line"></span></div>
         <section class="panel leg" id="leg-B" data-letter="B"><h2>Leg B <span class="small">Peer side B</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="B"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legB-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section>
