@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="/static/css/13-identity-sheet.css">
 <link rel="stylesheet" href="/static/css/14-relay-deck.css">
 <link rel="stylesheet" href="/static/css/15-stage-compact.css">
+<link rel="stylesheet" href="/static/css/16-call-recordings.css">
 </head>
 <body>
 <div class="shell">
@@ -95,16 +96,16 @@
         </div>
         <div id="micBanner" class="micbanner hidden"><span>Mic blocked. You can only listen.</span><button id="btnMicRetry" class="mini">Retry</button></div>
       </section>
+      <section class="panel sheet recordings-panel call-recs">
+        <h2><span class="idx">01</span>Recordings <span><button id="btnRecRefresh" class="mini">Refresh</button> <button id="btnRecClear" class="mini">Clear all</button></span></h2>
+        <div class="hint" id="recInfo">Nothing recorded yet.</div>
+        <div id="recs" class="recs"></div>
+      </section>
       <aside class="rail sheets">
         <section class="panel sheet">
-          <h2><span class="idx">01</span>Identity <span class="section-note">This tab only</span></h2>
+          <h2><span class="idx">02</span>Identity <span class="section-note">This tab only</span></h2>
           <button id="btnNew" class="newid"><span class="plus" aria-hidden="true">+</span><span><b>New identity</b><small>Fresh name for this tab</small></span></button>
           <div id="savedList" class="savedlist"></div>
-        </section>
-        <section class="panel sheet recordings-panel">
-          <h2><span class="idx">02</span>Recordings <span><button id="btnRecRefresh" class="mini">Refresh</button> <button id="btnRecClear" class="mini">Clear all</button></span></h2>
-          <div class="hint" id="recInfo">Nothing recorded yet.</div>
-          <div id="recs" class="recs"></div>
         </section>
       </aside>
     </main>

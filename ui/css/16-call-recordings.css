@@ -1,0 +1,23 @@
+/* ---- call recordings: under the stage, not in the rail (user request) ----
+   Left column: stage, then recordings. The rail (identity) spans both rows. */
+main.room { grid-template-rows: auto 1fr; }
+main.room > .stage { grid-column: 1; grid-row: 1; }
+main.room > .call-recs { grid-column: 1; grid-row: 2; }
+main.room > .rail { grid-column: 2; grid-row: 1 / span 2; }
+
+.call-recs {
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent;
+  padding: clamp(22px, 2.4vw, 34px);
+}
+.call-recs .recs {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  max-height: 340px; align-content: start;
+}
+.call-recs .recs > .empty { grid-column: 1 / -1; }
+.call-recs .hint[hidden] { display: none; }
+
+@media (max-width: 1100px) {
+  main.room { grid-template-rows: none; }
+  main.room > .stage, main.room > .call-recs, main.room > .rail { grid-column: auto; grid-row: auto; }
+  .rail { grid-template-columns: 1fr; }
+}
