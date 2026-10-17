@@ -383,6 +383,7 @@ function handle(m) {
       // arrive repeatedly and used to stack a row per message
       if (u.username && u.username !== lastUsername) {
         lastUsername = u.username;
+        autoSaveIdentity();
       }
       // The server tells us which search languages exist; build the dropdown
       // from its list so it can never drift from what the API accepts.
@@ -620,17 +621,10 @@ function showMatch(dialog, state, label) {
 }
 
 // controls
-$("btnConnect").onclick = () => {
-  const id = $("deviceId").value.trim();
-  myGen++;
-  // send THIS tab's cookie so concurrent tabs keep separate identities
-  send({ cmd: "connect", deviceId: id || null, cookie: tabCookie || null, gen: myGen });
-};
 $("btnNew").onclick = async () => {
   try {
     const r = await fetch("/api/new", { method: "POST" });
     const j = await r.json();
-    $("deviceId").value = j.deviceId;
     acct.deviceId = j.deviceId;
     acct.cookie = j.cookie;
     acct.username = null;
@@ -647,18 +641,34 @@ $("btnNew").onclick = async () => {
 };
 
 // saved identities: switch back to one you used before
+const TONES = ["#FE7F2D", "#5BA4CF", "#E4C26B", "#7FC8A9", "#D98BB6", "#9AA7F2"];
+function toneFor(name) { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return TONES[h % TONES.length]; }
+function initialOf(name) { const m = String(name).match(/[A-Za-z0-9]/); return m ? m[0].toUpperCase() : "?"; }
+// every identity this tab ends up using is remembered automatically, so the
+// list stays useful without a manual "save" button
+async function autoSaveIdentity() {
+  if (!acct.deviceId || !acct.cookie) return;
+  try {
+    await fetch("/api/saved", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: acct.deviceId, cookie: acct.cookie, username: acct.username }) });
+  } catch (_) {}
+  renderSaved();
+}
 async function renderSaved() {
   const box = $("savedList");
   if (!box) return;
   try {
     const j = await (await fetch("/api/saved")).json();
     if (!j.entries.length) { box.innerHTML = '<div class="empty">No saved identities.</div>'; return; }
-    box.innerHTML = j.entries.map((e) => {
-      const sub = e.username ? `${e.username} · used ${e.uses} time${e.uses === 1 ? "" : "s"}` : `used ${e.uses} time${e.uses === 1 ? "" : "s"}`;
-      return `<div class="savedrow">
-        <span class="who"><span class="sid">${escapeHtml(e.deviceId)}</span><span class="sub">${escapeHtml(sub)}</span></span>
-        <button class="mini" data-use="${escapeHtml(e.deviceId)}">Use</button>
-        <button class="mini" data-delid="${escapeHtml(e.deviceId)}">Remove</button>
+    box.innerHTML = j.entries.map((e, i) => {
+      const name = e.username || "Unnamed identity";
+      const uses = e.uses ? `used ${e.uses}×` : "never used";
+      const live = acct.deviceId && e.deviceId === acct.deviceId;
+      return `<div class="idrow${live ? " live" : ""}" style="--tone:${toneFor(name)}">
+        <span class="idmark" aria-hidden="true">${escapeHtml(initialOf(name))}</span>
+        <span class="idtext"><b>${escapeHtml(name)}</b><small>${live ? "In use on this tab" : uses}</small></span>
+        <span class="idact">${live ? '<span class="idlive">Live</span>' : `<button class="mini" data-use="${escapeHtml(e.deviceId)}">Use</button>`}
+        <button class="idx-del" data-delid="${escapeHtml(e.deviceId)}" data-name="${escapeHtml(name)}" title="Remove" aria-label="Remove ${escapeHtml(name)}">×</button></span>
       </div>`;
     }).join("");
     box.querySelectorAll("[data-use]").forEach((b) => {
@@ -670,8 +680,7 @@ async function renderSaved() {
           saveIdentity({ deviceId: j.deviceId, cookie: j.cookie });
           acct.deviceId = j.deviceId; acct.cookie = j.cookie; acct.username = j.username || null;
           acct.premium = false;
-          $("deviceId").value = j.deviceId;
-          renderAcct();
+                renderAcct();
           myGen++;
           send({ cmd: "connect", deviceId: j.deviceId, cookie: j.cookie, gen: myGen });
           setConn("off", "Connecting…");
@@ -682,41 +691,13 @@ async function renderSaved() {
       b.onclick = async () => {
         try {
           await fetch(`/api/saved/${encodeURIComponent(b.dataset.delid)}`, { method: "DELETE" });
-          logLine(`Removed ${b.dataset.delid}.`, "sys");
+          logLine(`Removed ${b.dataset.name || "identity"}.`, "sys");
         } catch (e) { logLine(`Could not remove: ${e.message}`, "err"); }
         renderSaved();
       };
     });
   } catch (_) { box.innerHTML = '<div class="empty">Unavailable.</div>'; }
 }
-$("btnIdSave").onclick = async () => {
-  if (!acct.deviceId || !acct.cookie) return logLine("No identity to save yet.", "warn");
-  try {
-    await fetch("/api/saved", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId: acct.deviceId, cookie: acct.cookie, username: acct.username }) });
-    logLine(`Saved ${acct.deviceId}.`, "match");
-  } catch (e) { logLine(`Could not save: ${e.message}`, "err"); }
-  renderSaved();
-};
-
-$("btnLogin").onclick = async () => {
-  const id = $("deviceId").value.trim();
-  if (!id) return logLine("Enter a device ID first.", "err");
-  try {
-    const r = await fetch("/api/login", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId: id }),
-    });
-    const j = await r.json();
-    if (!j || !j.cookie) return logLine("Could not use that ID.", "err");
-    saveIdentity({ deviceId: j.deviceId, cookie: j.cookie });
-    logLine("Identity ready.", "sys");
-    myGen++;
-    send({ cmd: "connect", deviceId: j.deviceId, cookie: j.cookie, gen: myGen });
-  } catch (e) {
-    logLine(`Could not connect: ${e.message}`, "err");
-  }
-};
 $("btnSearch").onclick = () => {
   if (CallState.busy) return;
   if (CallState.mode === "idle" || CallState.mode === "searching") {
@@ -864,10 +845,6 @@ function callEnd(reason) {
   callMode("idle");
 }
 
-$("btnShuffle").onclick = () => {
-  send({ cmd: "shuffle" });
-  logLine("Requesting a new name…", "sys");
-};
 $("btnHangup") && ($("btnHangup").onclick = () => callEnd("hangup"));
 $("btnBufferDialog") && ($("btnBufferDialog").onclick = () => {
   const ev = $("bdEvent").value;
@@ -2035,20 +2012,22 @@ async function poolRefresh() {
     list.innerHTML = es.map((e) => {
       const used = (e.uses || 0) > 0;
       const meta = `${ageWords(e.age_min)} · ${e.uses ? `used ${e.uses} time${e.uses === 1 ? "" : "s"}` : "never used"}`;
-      return `<div class="poolrow" data-used="${used ? 1 : 0}">
-        <span class="who"><span class="id" title="${escapeHtml(e.deviceId)}">${escapeHtml(e.username || e.deviceId)}</span><span class="sub" title="${escapeHtml(e.deviceId)}">${meta}</span></span>
-        <button class="delid" data-delid="${escapeHtml(e.deviceId)}"
-                title="Remove from the pool">Remove</button>
+      const name = e.username || "Unnamed identity";
+      return `<div class="idrow poolrow" data-used="${used ? 1 : 0}" style="--tone:${toneFor(name)}">
+        <span class="idmark" aria-hidden="true">${escapeHtml(initialOf(name))}</span>
+        <span class="idtext"><b>${escapeHtml(name)}</b><small>${meta}</small></span>
+        <span class="idact"><button class="idx-del delid" data-delid="${escapeHtml(e.deviceId)}" data-name="${escapeHtml(name)}"
+                title="Remove from the pool" aria-label="Remove ${escapeHtml(name)}">×</button></span>
       </div>`;
     }).join("");
 
     list.querySelectorAll("[data-delid]").forEach((b) => {
       b.onclick = async () => {
         const id = b.dataset.delid;
-        if (!confirm(`Remove ${id} from the pool?`)) return;
+        if (!confirm(`Remove ${b.dataset.name || "this identity"} from the pool?`)) return;
         safeLoad(async () => {
           await fetch(`/api/pool/${encodeURIComponent(id)}`, { method: "DELETE" });
-          logLine(`Removed ${id}.`, "sys");
+          logLine(`Removed ${b.dataset.name || "identity"}.`, "sys");
           poolRefresh();
         });
       };
