@@ -21,3 +21,5 @@ libs/
 __pycache__/
 *.pyc
 .venv/
+# Go build output
+bin/
