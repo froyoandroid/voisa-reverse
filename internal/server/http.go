@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -22,8 +21,6 @@ import (
 
 	"voisa/internal/account"
 	"voisa/internal/logs"
-	"voisa/internal/protocol"
-	"voisa/internal/sio"
 	"voisa/internal/users"
 )
 
@@ -52,16 +49,6 @@ func New(projectRoot string) http.Handler {
 	})
 	mux.HandleFunc("POST /api/new", apiNew)
 	mux.HandleFunc("POST /api/relay/fresh", apiRelayFresh)
-	mux.HandleFunc("GET /api/pool", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, M{"entries": users.For(w, r).Pool.Status()})
-	})
-	mux.HandleFunc("POST /api/pool/add", apiPoolAdd)
-	mux.HandleFunc("DELETE /api/pool/{device_id}", apiPoolRemove)
-	mux.HandleFunc("POST /api/pool/clear", func(w http.ResponseWriter, r *http.Request) {
-		u := users.For(w, r)
-		writeJSON(w, 200, M{"cleared": u.Pool.Clear(userLog(u, "pool"))})
-	})
-	mux.HandleFunc("POST /api/pool/resolve_names", apiResolveNames)
 	mux.HandleFunc("GET /api/saved", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, M{"entries": users.For(w, r).Saved.Status()})
 	})
@@ -122,7 +109,7 @@ func readBody(r *http.Request) M {
 	return m
 }
 
-// userLog writes one user's HTTP-side lines (pool, saved) to their log.
+// userLog writes one user's HTTP-side lines to their log.
 func userLog(u *users.User, level string) func(string) {
 	return func(m string) { logs.WriteUser(u.Log(), m, level, "") }
 }
@@ -184,26 +171,23 @@ func index(w http.ResponseWriter, r *http.Request) {
 
 // identities
 
-// apiNew leases an aged identity from the pool rather than minting one: a
-// brand-new account seconds before a call is the anomaly. Never one a live
-// session already holds.
+// apiNew is the "New identity" button: a brand-new Voisa account that
+// becomes this browser's Call identity, with its 24 hours starting now.
 func apiNew(w http.ResponseWriter, r *http.Request) {
 	u := users.For(w, r)
-	e, err := u.Pool.Lease(cookiesInUse(nil), userLog(u, "pool"))
+	id, err := identityCall(account.Fresh)
 	if err != nil {
 		writeJSON(w, 500, M{"detail": err.Error()})
 		return
 	}
-	// the user asked for it: it becomes this browser's identity for 24 hours
-	did, _ := e["deviceId"].(string)
-	cookie, _ := e["cookie"].(string)
-	c := users.CallIdentity{DeviceID: did, Cookie: cookie, Since: account.Now()}
+	c := users.CallIdentity{DeviceID: id.DeviceID, Cookie: id.Cookie, Since: account.Now()}
 	_ = u.SetIdentity(c)
+	logs.WriteUser(u.Log(), "[identity] new identity "+c.DeviceID, "sys", "")
 	writeJSON(w, 200, M{"deviceId": c.DeviceID, "cookie": c.Cookie, "since": c.Since})
 }
 
 // apiRelayFresh mints a brand-new identity for a relay leg (user rule: relay
-// legs never reuse pool identities).
+// legs always get brand-new identities).
 func apiRelayFresh(w http.ResponseWriter, r *http.Request) {
 	id, err := identityCall(account.Fresh)
 	if err != nil {
@@ -211,80 +195,6 @@ func apiRelayFresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, M{"deviceId": id.DeviceID, "cookie": id.Cookie})
-}
-
-func apiPoolAdd(w http.ResponseWriter, r *http.Request) {
-	u := users.For(w, r)
-	n := 1
-	if v, ok := readBody(r)["n"].(float64); ok {
-		n = int(v)
-	}
-	n = max(1, min(n, 20))
-	made, err := u.Pool.Add(n, userLog(u, "pool"))
-	if err != nil && len(made) == 0 {
-		writeJSON(w, 500, M{"detail": err.Error()})
-		return
-	}
-	ids := []any{}
-	for _, e := range made {
-		ids = append(ids, e["deviceId"])
-	}
-	writeJSON(w, 200, M{"added": ids, "total": len(u.Pool.Load())})
-}
-
-func apiPoolRemove(w http.ResponseWriter, r *http.Request) {
-	u := users.For(w, r)
-	id := r.PathValue("device_id")
-	if !u.Pool.Remove(id, userLog(u, "pool")) {
-		writeJSON(w, 404, M{"detail": "no such identity"})
-		return
-	}
-	writeJSON(w, 200, M{"removed": id, "total": len(u.Pool.Load())})
-}
-
-// apiResolveNames backfills missing nicknames: the name is only disclosed
-// over the socket, so each nameless entry gets one short connection.
-func apiResolveNames(w http.ResponseWriter, r *http.Request) {
-	u := users.For(w, r)
-	poolLog := userLog(u, "pool")
-	resolved := M{}
-	for _, e := range u.Pool.Missing() {
-		did, _ := e["deviceId"].(string)
-		cookie, _ := e["cookie"].(string)
-		name := fetchUsername(cookie)
-		if name != "" {
-			u.Pool.SetUsername(name, did, cookie, poolLog)
-			resolved[did] = name
-		} else {
-			poolLog(fmt.Sprintf("[pool] resolve %s: no name (dead cookie?)", did))
-		}
-	}
-	writeJSON(w, 200, M{"resolved": resolved, "total": len(u.Pool.Load())})
-}
-
-func fetchUsername(cookie string) string {
-	got := make(chan string, 1)
-	c := &sio.Client{URL: protocol.SocketURL(cookie)}
-	c.OnEvent = func(ev string, raw json.RawMessage) {
-		if ev != "fetch-initial-data" {
-			return
-		}
-		d := asMap(decode(raw))
-		select {
-		case got <- sget(asMap(d["userData"]), "username"):
-		default:
-		}
-	}
-	if err := c.Connect(context.Background(), 15*time.Second); err != nil {
-		return ""
-	}
-	defer c.Close()
-	select {
-	case n := <-got:
-		return n
-	case <-time.After(5 * time.Second):
-		return ""
-	}
 }
 
 func apiSavedAdd(w http.ResponseWriter, r *http.Request) {

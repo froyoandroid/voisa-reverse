@@ -321,9 +321,8 @@ func (l *Leg) close() {
 }
 
 // shareNames gives every leg the names of all our legs, so any leg can spot
-// a match with one of its own. It is also where a leased pool entry learns
-// its server-assigned nickname: save it, and push it to the browser so the
-// leg's identity row fills in.
+// a match with one of its own. It also pushes each leg's server-assigned
+// nickname to the browser, so the leg's identity row fills in.
 func shareNames(s *Session) {
 	s.mu.Lock()
 	legs := make([]*Leg, 0, len(s.legs))
@@ -340,7 +339,6 @@ func shareNames(s *Session) {
 			continue
 		}
 		names[name] = true
-		s.user.Pool.SetUsername(name, l.deviceID, l.cookie, func(m string) { logs.Write(m, "pool", s.cid) })
 		s.send("mitm", M{"leg": l.key, "what": "identity", "deviceId": l.deviceID, "username": name})
 	}
 	for _, l := range legs {
