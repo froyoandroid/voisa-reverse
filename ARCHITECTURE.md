@@ -11,7 +11,7 @@ internal/
   sio/                minimal Socket.IO v4 client (engine.io 4, websocket):
                       handshake, ping/pong, events, acks, reconnect
   account/            createAccount, device ids, fresh/register identities
-  store/              voisa_pool.json (LRU lease) and voisa_saved.json
+  store/              voisa_saved.json (the saved-identity shelf)
   users/              anonymous owners: voisa_uid cookie -> users/<id>/
   logs/               voisa.log writer, trimmed to 24 h
   server/
@@ -48,7 +48,7 @@ systemd runs it as `voisa.service` behind nginx.
 ## Users
 
 There is no login. Each browser gets an anonymous HttpOnly cookie,
-`voisa_uid`, and its own `users/<id>/`: `voisa_pool.json`,
+`voisa_uid`, and its own `users/<id>/`: `identity.json`,
 `voisa_saved.json` (live Voisa cookies), `voisa.log` (what the Logs view
 shows) and `media/`. One owner never sees another's data, even on the same
 network. Inside an owner, each tab still has its own Voisa identity
@@ -61,7 +61,7 @@ is the tab's own identity, then the browser's (`users/<id>/identity.json`,
 kept 24 hours from when it was taken, so it survives closing the tab), then
 a new one. A second open tab gets its own. After 24 hours the next action
 makes a new one, never in the middle of a call. Relay legs mint brand-new
-identities on every Start (`/api/relay/fresh`), never from the pool.
+identities on every Start (`/api/relay/fresh`). There is no identity pool.
 
 Old single-user data in the root is adopted once via `/?claim=<token>`, with
 the token in `users/CLAIM_TOKEN`.
