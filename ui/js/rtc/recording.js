@@ -32,7 +32,7 @@ function rtcRecordStop() {
 }
 
 async function rtcStop() {
-  micCleanup();
+  micIdle();
   waveStop();
   WAVE.reset();
   rtcRecordStop();

@@ -94,6 +94,29 @@ async function micEnsure() {
     throw e;
   }
 }
+// Start opens the mic (inside the click, so the permission prompt is allowed)
+// and the stream stays open for the rest of this tab's session, so every
+// call goes out live without asking again. Talk is only a fallback now, for
+// a mic that was denied or unplugged.
+function micOpenForSession() {
+  if (rtc.micTrack && rtc.micTrack.readyState === "live") return;
+  micEnsure().then(async () => {
+    // granted after a call already started: go live on it now
+    if (rtc.audioSender && CallState.mode === "active") {
+      rtc.micTrack.enabled = true;
+      await micAttach();
+      rtc.micState = "live"; micPaint(); logLine("mic: live", "match");
+    }
+  }).catch(() => {});
+}
+// Call over: the mic stream stays open for the next call; the next call
+// starts unmuted.
+function micIdle() {
+  if (rtc.micTrack) rtc.micTrack.enabled = true;
+  rtc.micState = "off";
+  micPaint();
+}
+window.addEventListener("pagehide", () => micCleanup());
 function micCleanup() {
   try { rtc.micStream?.getTracks()?.forEach((t) => t.stop()); } catch (_) {}
   rtc.micStream = null; rtc.micTrack = null; rtc.micState = "off";
@@ -133,16 +156,19 @@ async function rtcStart(matchId) {
   const pc = new RTCPeerConnection({ iceServers: rtc.iceServers || [] });
   rtc.pc = pc;
 
-  // Audio is sendrecv from the first offer. It carries a silent track (so no
-  // mic prompt) until Talk swaps the mic in with replaceTrack.
+  // Audio is sendrecv from the first answer. It carries the session's mic,
+  // live, when Start opened it; otherwise a silent track that Talk (or a
+  // late mic grant) swaps for the mic with replaceTrack.
   //
   // BOTH audio and video m-lines are required. The server-side path added the
   // same pair; with audio alone the peer completes ICE and DTLS but then tears
   // the call down because its video leg has nowhere to go.
-  const up = rtcSilentTrack();
+  const mic = rtc.micTrack && rtc.micTrack.readyState === "live" ? rtc.micTrack : null;
+  const up = mic || rtcSilentTrack();
   rtc.audioSender = up
-    ? pc.addTrack(up, rtc.upStream)
+    ? pc.addTrack(up, mic ? rtc.micStream : rtc.upStream)
     : pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
+  if (mic) { mic.enabled = true; rtc.micState = "live"; }
   pc.addTransceiver("video", { direction: "recvonly" });
 
   pc.ontrack = (ev) => {

@@ -11,7 +11,9 @@ function setRecUI(on) {
   b.classList.toggle("on", on);
 }
 $("btnRecord").onclick = () => send({ cmd: "record", on: !recOn });
-// Talk toggle: off -> live (acquire + publish), live -> muted, muted -> live.
+// Mute toggle. Calls start live on the session mic (opened at Start), so the
+// button reads Mute. off -> live is the fallback when the mic was denied.
+// live -> muted, muted -> live.
 // Mute flips track.enabled only. The mic goes onto the call's existing audio
 // sender with replaceTrack, so Talk never renegotiates.
 async function micTalk() {

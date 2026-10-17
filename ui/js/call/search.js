@@ -5,7 +5,7 @@ $("btnSearch").onclick = () => {
   if (CallState.busy) return;
   if (CallState.mode === "idle" || CallState.mode === "searching") {
     if (CallState.mode === "searching") { stopSearch(); callEnd("stopcall"); }
-    else { searchN = 0; startSearch(); }
+    else { searchN = 0; micOpenForSession(); startSearch(); }
   }
   else callEnd("stopcall");
 };
