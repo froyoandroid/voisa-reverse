@@ -97,7 +97,7 @@ html[data-theme="light"] .s-grain { mix-blend-mode: multiply; filter: invert(1);
 .rail .row:first-of-type { flex-wrap: nowrap; }
 .rail #deviceId { min-width: 0; }
 .rail .recs { max-height: none; }
-.savedrow, .rec, .recrow { border-radius: 10px; }
+.savedrow, .rec, .recrow, .poolrow { border-radius: 10px; }
 
 /* ---- relay as split canvas ---- */
 #view-mitm { display: block; }
@@ -111,7 +111,7 @@ html[data-theme="light"] .s-grain { mix-blend-mode: multiply; filter: invert(1);
 .legs { grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); border-bottom: 1px solid var(--line); }
 .leg { border: 0; border-radius: 0; background: transparent; padding: clamp(24px, 3vw, 44px); }
 .spine-knot { width: 48px; height: 48px; }
-#view-mitm .recpanel { padding-left: clamp(24px, 3vw, 44px); padding-right: clamp(24px, 3vw, 44px); }
+#view-mitm .poolpanel, #view-mitm .recpanel { padding-left: clamp(24px, 3vw, 44px); padding-right: clamp(24px, 3vw, 44px); }
 
 /* logs / settings fill the canvas */
 #view-logs .logfull { height: calc(100vh - 120px); border-radius: 12px; }
