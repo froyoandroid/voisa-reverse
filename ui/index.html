@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="/static/css/14-relay-deck.css">
 <link rel="stylesheet" href="/static/css/15-stage-compact.css">
 <link rel="stylesheet" href="/static/css/16-call-recordings.css">
+<link rel="stylesheet" href="/static/css/17-settings-recordings.css">
 </head>
 <body>
 <div class="shell">
@@ -116,17 +117,40 @@
         <section class="panel leg" id="leg-B" data-letter="B"><h2>Leg B <span class="small">Peer side B</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="B"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legB-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section>
       </div>
       <section class="panel poolpanel sheet"><h2><span class="idx">03</span>Identity pool <span class="hint" id="poolHint">Least recently used first</span></h2><div class="row"><button id="btnPoolAdd">+ Add</button><label class="num">Count <input type="number" id="poolCount" value="4" min="1" max="20"></label><button id="btnPoolRefresh" class="quiet">Refresh</button><button id="btnPoolClear" class="quiet">Clear all</button><span class="hint" id="poolSummary">—</span></div><div id="poolList" class="poollist"></div></section>
-      <section class="panel recpanel sheet"><h2><span class="idx">04</span>Relay recordings <button id="btnRecRefreshMitm" class="mini">Refresh</button></h2><div class="hint">Saved on the server, verified playable on stop.</div><div id="recList" class="reclist"></div></section>
+      <section class="panel recpanel sheet"><h2><span class="idx">04</span>Relay recordings <button id="btnRecRefreshMitm" class="mini">Refresh</button></h2><div class="hint" id="recListSum">Saved on the server for 24 hours.</div><div id="recList" class="reclist"></div></section>
     </div>
     <div id="view-logs" class="view" hidden>
       <section class="panel logpanel sheet"><h2><span class="idx">—</span>Activity <span><button id="btnClear" class="mini">Clear</button> <a class="mini" id="lnkLog" href="/api/log/download" download>Download</a></span></h2><div id="log" class="log logfull"></div></section>
     </div>
     <div id="view-settings" class="view" hidden>
-      <section class="panel raw-panel sheet"><h2><span class="idx">—</span>Developer tools <span class="section-note">Raw event</span></h2><div class="row"><select id="evt"></select><input id="payload" placeholder='{"searchLanguage":"en"}'><button id="btnEmit">Send</button></div></section>
+      <section class="panel sheet set-sheet"><h2><span class="idx">01</span>Audio</h2><div class="set-list">
+        <label class="set"><span class="set-k">Microphone</span><select id="setMic"><option value="">System default</option></select></label>
+        <div class="set"><span class="set-k">Mic level<small id="setMicHint">Press Test to hear yourself on the meter</small></span><span class="set-v"><span class="meter set-meter"><i id="setMicLvl"></i></span><button id="btnMicTest" class="mini">Test</button></span></div>
+        <label class="set" id="setSpkRow"><span class="set-k">Speaker</span><select id="setSpk"><option value="">System default</option></select></label>
+        <label class="set"><span class="set-k">Echo cancellation</span><input type="checkbox" class="sw" data-pref="echo"></label>
+        <label class="set"><span class="set-k">Noise suppression</span><input type="checkbox" class="sw" data-pref="noise"></label>
+        <label class="set"><span class="set-k">Auto gain</span><input type="checkbox" class="sw" data-pref="agc"></label>
+        <label class="set"><span class="set-k">Start calls muted<small>Your mic opens at Start; this only decides if it begins muted</small></span><input type="checkbox" class="sw" data-pref="startMuted"></label>
+      </div></section>
+      <section class="panel sheet set-sheet"><h2><span class="idx">02</span>Call</h2><div class="set-list">
+        <label class="set"><span class="set-k">Default language<small>Also follows the last one you picked on the call deck</small></span><select id="setLang"></select></label>
+        <label class="set"><span class="set-k">Keep searching until matched<small>Searches again on its own when nobody connects</small></span><input type="checkbox" class="sw" data-pref="keepSearching"></label>
+        <label class="set"><span class="set-k">Record every call</span><input type="checkbox" class="sw" data-pref="autoRecCall"></label>
+      </div></section>
+      <section class="panel sheet set-sheet"><h2><span class="idx">03</span>Relay</h2><div class="set-list">
+        <label class="set"><span class="set-k">Record when the relay starts<small>Records A, B and the A+B mix</small></span><input type="checkbox" class="sw" data-pref="autoRecRelay"></label>
+      </div></section>
+      <section class="panel sheet set-sheet"><h2><span class="idx">04</span>Storage</h2><div class="set-list">
+        <div class="set"><span class="set-k">Recordings<small>On the server, deleted 24 hours after they start</small></span><span class="set-v mono" id="stSummary">—</span></div>
+        <div class="set"><span class="set-k">Call recordings</span><span class="set-v"><span class="mono" id="stCall">—</span><button id="btnStClearCall" class="mini">Clear</button></span></div>
+        <div class="set"><span class="set-k">Relay recordings</span><span class="set-v"><span class="mono" id="stRelay">—</span><button id="btnStClearRelay" class="mini">Clear</button></span></div>
+        <div class="set" id="stOldRow" hidden><span class="set-k">Old browser recordings<small>From before recordings moved to the server</small></span><span class="set-v"><span class="mono" id="stOld">—</span><button id="btnStClearOld" class="mini">Remove</button></span></div>
+      </div></section>
     </div>
   </div>
 </div>
 <script src="/static/js/core/state.js"></script>
+<script src="/static/js/core/prefs.js"></script>
 <script src="/static/js/call/account.js"></script>
 <script src="/static/js/call/wave.js"></script>
 <script src="/static/js/core/log.js"></script>
@@ -139,9 +163,9 @@
 <script src="/static/js/call/controls.js"></script>
 <script src="/static/js/identity/saved.js"></script>
 <script src="/static/js/call/search.js"></script>
+<script src="/static/js/recordings/upload.js"></script>
 <script src="/static/js/recordings/list.js"></script>
 <script src="/static/js/call/record-talk.js"></script>
-<script src="/static/js/dev/emit.js"></script>
 <script src="/static/js/rtc/peer.js"></script>
 <script src="/static/js/rtc/negotiate.js"></script>
 <script src="/static/js/rtc/recording.js"></script>
@@ -155,6 +179,7 @@
 <script src="/static/js/relay/rec-list.js"></script>
 <script src="/static/js/relay/controls.js"></script>
 <script src="/static/js/relay/pool.js"></script>
+<script src="/static/js/settings/view.js"></script>
 <script src="/static/js/main.js"></script>
 </body>
 </html>
