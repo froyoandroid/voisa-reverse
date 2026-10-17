@@ -21,7 +21,10 @@ $("btnMitmBridge")?.addEventListener("click", () => {
 function recDeck(btn, on, live) {
   btn.classList.toggle("on", on);
   btn.setAttribute("aria-pressed", String(on));
-  btn.querySelector('[data-role="lbl"]').textContent = on ? "Recording" : "Record";
+  // while recording the label is a live clock (data-since ticks every second)
+  const lbl = btn.querySelector('[data-role="lbl"]');
+  if (on && REC.since) lbl.innerHTML = `Recording <b class="rec-clock" data-since="${REC.since}">${fmtDur(Date.now() - REC.since)}</b>`;
+  else lbl.textContent = on ? "Recording" : "Record";
   const sub = btn.querySelector('[data-role="sub"]');   // descriptions removed (user request)
   if (sub) sub.textContent = on ? (live ? "Tap to stop" : "Armed, waits for peers") : "";
 }

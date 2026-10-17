@@ -1,41 +1,10 @@
 "use strict";
-// Per-leg recording into browser storage (OPFS).
+// Per-leg relay recording, uploaded to the server as it records.
 
 // per-leg recording: each leg captured separately, so the two sides stay
-// distinguishable without unmixing
-// The bytes go to the SERVER, not to a download.
-//
-// A browser-side download produced a broken file: MediaRecorder only writes a
-// valid container header on stop, so a reload or a torn-down leg left chunks
-// that were never assembled and the .webm would not open. Uploading each chunk
-// as it is produced means the server always holds everything received so far,
-// and the file is fetched deliberately from the recordings list.
-function legRecMime() {
-  for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]) {
-    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
-  }
-  return "";
-}
-
-// browser storage (OPFS)
-// Recordings live in the browser's Origin Private File System, not on the
-// server. Each 1s chunk is appended at an explicit offset with its own
-// writable + close, so every chunk is flushed to disk as it lands: a reload
-// mid-recording leaves a playable file (header in the first chunk, clusters
-// appended in order), which is what the old server-side session file bought.
-async function recRoot() {
-  return navigator.storage.getDirectory();
-}
-function recStamp() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
-}
-async function recWriteChunk(handle, offset, blob) {
-  const w = await handle.createWritable({ keepExistingData: true });
-  await w.write({ type: "write", position: offset, data: blob });
-  await w.close();
-}
+// distinguishable without unmixing. Chunks stream to the server through
+// ServerRec (recordings/upload.js); browser storage (OPFS) is no longer used
+// because it lost and broke files.
 
 // recording graph
 // Why not MediaRecorder on the peer's stream directly (the old way):
@@ -57,7 +26,8 @@ async function recWriteChunk(handle, offset, blob) {
 //                              +--> recMix (relay-mix-*.webm: the whole conversation)
 const REC = {
   on: false,
-  slots: {},      // key -> { key, dest, rec, handle, offset, chain, name }
+  since: 0,       // ms epoch the current recording started (0 = off)
+  slots: {},      // key -> { key, dest, keepAlive, rec: ServerRec }
   feeds: {},      // leg key -> { stream, src, gain }
 };
 
@@ -109,45 +79,9 @@ function recUnfeed(leg) {
   delete REC.feeds[leg.key];
 }
 
-function recSlotStart(slot, stamp) {
-  const mime = legRecMime();
-  slot.name = `relay-${slot.key}-${stamp}.webm`;
-  slot.handle = null; slot.offset = 0; slot.chain = Promise.resolve();
-  const rec = new MediaRecorder(slot.dest.stream,
-    Object.assign({ audioBitsPerSecond: 64000 }, mime ? { mimeType: mime } : {}));
-  slot.rec = rec;
-  const name = slot.name;
-  rec.ondataavailable = (e) => {
-    if (!e.data || !e.data.size) return;
-    // serialise writes: a slow flush must never interleave with the next chunk
-    slot.chain = slot.chain.then(async () => {
-      try {
-        if (!slot.handle) {
-          const root = await recRoot();
-          slot.handle = await root.getFileHandle(name, { create: true });
-          slot.offset = 0;
-        }
-        await recWriteChunk(slot.handle, slot.offset, e.data);
-        slot.offset += e.data.size;
-      } catch (err) {
-        logLine(`[mitm] ${slot.key} chunk write failed: ${err.message}`, "err");
-      }
-    });
-  };
-  rec.onstop = async () => {
-    try {
-      await slot.chain;
-      const f = slot.handle ? await slot.handle.getFile() : null;
-      if (f && f.size) logLine(`[mitm] ${slot.key === "mix" ? "mix" : "leg " + slot.key} recording saved: ${name} (${(f.size / 1024).toFixed(0)} KB, in browser)`, "match");
-      else logLine(`[mitm] ${slot.key}: nothing recorded`, "warn");
-    } catch (e) {
-      logLine(`[mitm] ${slot.key} stop failed: ${e.message}`, "err");
-    }
-    slot.handle = null; slot.rec = null;
-    recListRefresh();
-  };
-  // 1s slices: frequent enough that a crash loses at most a second
-  rec.start(1000);
+function recSlotStart(slot, group) {
+  slot.rec = new ServerRec(slot.dest.stream, { kind: "relay", track: slot.key, group });
+  slot.rec.start().catch((e) => logLine(`[mitm] ${slot.key} record failed: ${e.message}`, "err"));
 }
 
 // Start recording both legs and the mix. Called from the Record button (a
@@ -158,23 +92,33 @@ function relayRecordStart() {
   const ctx = BridgeAudio.context();
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   REC.on = true;
-  const stamp = recStamp();
+  REC.since = Date.now();
+  const group = `g${REC.since.toString(36)}`;
   for (const key of ["A", "B", "mix"]) {
-    try { recSlotStart(recSlot(key), stamp); }
+    try { recSlotStart(recSlot(key), group); }
     catch (e) { logLine(`[mitm] ${key} record failed: ${e.message}`, "err"); }
   }
   for (const leg of [LEGS.A, LEGS.B]) {
     leg.recording = true;
     if (leg.peerStream) recFeed(leg, leg.peerStream);
   }
-  logLine("[mitm] recording legs A, B and the mix to browser storage", "sys");
+  logLine("[mitm] recording legs A, B and the mix to the server", "sys");
+  setTimeout(recListRefresh, 1500);
 }
 
 function relayRecordStop() {
   if (!REC.on) return;
   REC.on = false;
   for (const leg of [LEGS.A, LEGS.B]) { leg.recording = false; recUnfeed(leg); }
-  for (const slot of Object.values(REC.slots)) {
-    try { if (slot.rec && slot.rec.state !== "inactive") slot.rec.stop(); } catch (_) {}
-  }
+  REC.since = 0;
+  const stops = Object.values(REC.slots).filter((s) => s.rec).map((slot) => {
+    const r = slot.rec; slot.rec = null;
+    return r.stop();
+  });
+  Promise.all(stops).then((rs) => {
+    const kb = rs.reduce((n, r) => n + r.bytes, 0) / 1024;
+    logLine(`[mitm] recording saved on the server (${kb.toFixed(0)} KB, ${fmtDur(rs[0] ? rs[0].elapsed() : 0)})`, "match");
+    recListRefresh();
+    setTimeout(recListRefresh, 2500); // after the server's remux
+  });
 }

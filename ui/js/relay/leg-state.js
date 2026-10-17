@@ -199,6 +199,12 @@ $("btnMitmStart")?.addEventListener("click", async () => {
   // start fresh. The backend also stops its own bridge per leg on start.
   const restart = !mitmLegsIdle();
   if (restart) { legStop(LEGS.A); legStop(LEGS.B); }
+  // Settings > Relay > Auto-record: started inside the click so the audio
+  // context may run; it records each peer as it connects
+  if (prefs().autoRecRelay && !REC.on) {
+    relayRecordStart();
+    recDeck($("btnMitmRec"), REC.on, 0);
+  }
   await legStart(LEGS.A, legLang(LEGS.A), 0);
   await legStart(LEGS.B, legLang(LEGS.B), 0);
   if (h) h.textContent = restart ? "Restarted — searching fresh" : "Searching — both peers appear below";
