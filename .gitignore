@@ -11,8 +11,8 @@ data/
 *.webm
 *.m4a
 *.aac
-media/
-recordings/
+/media/
+/recordings/
 voice.wav
 apk/
 jadx-out/
