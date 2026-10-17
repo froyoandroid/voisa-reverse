@@ -1124,3 +1124,16 @@ html[data-theme="light"] .s-grain { mix-blend-mode: multiply; filter: invert(1);
   .stage .deck .go-btn { order: 0; flex: 1 1 0; min-width: 0; }
   .stage .lang-pill select { padding-left: 16px; }
 }
+/* relay player buttons: drawn shapes, like the record dot, not text glyphs.
+   The triangle is nudged right by its optical centre (1/6 of its width). */
+.rd-ico { position: relative; font-size: 0; }
+.rd-ico::after { content: ""; display: block; background: currentColor; }
+.rd-play::after {
+  width: 15px; height: 17px; margin-left: 4px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  border-radius: 2px;
+}
+.rd-sq::after { width: 13px; height: 13px; border-radius: 3px; }
+.rd-main:hover .rd-ico { transform: none; }
+.rd-main:hover .rd-play::after { transform: translateX(1px); transition: transform .2s var(--ease); }
+.relay-deck button { justify-content: flex-start; }
