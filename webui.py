@@ -155,7 +155,10 @@ async def api_new():
     #
     # Not adopted as the stored default, for the same reason as api_login:
     # concurrent tabs and legs each need their own identity.
-    entry = voisa.pool_lease(log=lambda m: logfile(m, "pool"))
+    # Never lease an identity another live session is already using — that is
+    # exactly how two tabs ended up showing the same "new" identity.
+    entry = voisa.pool_lease(log=lambda m: logfile(m, "pool"),
+                             exclude=_cookies_in_use())
     return {"deviceId": entry["deviceId"], "cookie": entry["cookie"]}
 
 
@@ -517,6 +520,23 @@ async def api_login(body: dict):
 _SESSIONS = set()
 
 
+def _cookies_in_use(exclude: "Session | None" = None) -> set:
+    """Every Voisa identity currently held by a live browser session — its
+    main identity and both relay legs. Identity is per session, so nothing on
+    this list may be handed to another session."""
+    used = set()
+    for s in _SESSIONS:
+        if s is exclude:
+            continue
+        if s.cookie:
+            used.add(s.cookie)
+        for b in s.legs.values():
+            c = getattr(b, "cookie", None)
+            if c:
+                used.add(c)
+    return used
+
+
 class Session:
     """One browser tab <-> one Voisa socket connection."""
 
@@ -842,6 +862,15 @@ async def _dispatch(sess: "Session", msg: dict) -> None:
             # never the global voisa_account.json default. The browser
             # persists what comes back on the `account` message, so a
             # reload keeps the same identity instead of minting again.
+            acct = voisa.create_fresh()
+
+        # Identity is PER SESSION. If the identity this tab asked for is
+        # already held by another live session (a duplicated tab, a second
+        # tab in the same browser, a stale copy), do not share it: give this
+        # session its own fresh one instead.
+        if acct.get("cookie") and acct["cookie"] in _cookies_in_use(exclude=sess):
+            await sess.log("that identity is in use by another session — "
+                           "this session gets its own", "warn")
             acct = voisa.create_fresh()
 
         # Only tear down when the identity is actually changing. A plain

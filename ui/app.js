@@ -20,9 +20,16 @@ let currentMatchId = null;
 // identity and supplies it on every connect.
 const ID_KEY = "voisa:identity";
 
+// sessionStorage, not localStorage: localStorage is shared by every tab of the
+// browser, which made one identity show up everywhere. sessionStorage is per
+// tab (and survives that tab's reload). A duplicated tab copies it, so the
+// server also refuses an identity another live session holds and hands the
+// newcomer its own.
+try { localStorage.removeItem(ID_KEY); } catch (_) {}   // drop the old shared copy
+
 function loadIdentity() {
   try {
-    const j = JSON.parse(localStorage.getItem(ID_KEY) || "null");
+    const j = JSON.parse(sessionStorage.getItem(ID_KEY) || "null");
     return j && j.cookie ? j : null;
   } catch (_) { return null; }
 }
@@ -31,8 +38,8 @@ function saveIdentity(id) {
   tabIdentity = id && id.cookie ? { deviceId: id.deviceId || "", cookie: id.cookie } : null;
   tabCookie = tabIdentity ? tabIdentity.cookie : null;
   try {
-    if (tabIdentity) localStorage.setItem(ID_KEY, JSON.stringify(tabIdentity));
-    else localStorage.removeItem(ID_KEY);
+    if (tabIdentity) sessionStorage.setItem(ID_KEY, JSON.stringify(tabIdentity));
+    else sessionStorage.removeItem(ID_KEY);
   } catch (_) {}
 }
 
@@ -171,7 +178,7 @@ let logHist = null;
 let logSaveT = 0;
 function logHistLoad() {
   if (logHist) return logHist;
-  try { logHist = JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); }
+  try { logHist = JSON.parse(sessionStorage.getItem(LOG_KEY) || "[]"); }
   catch (_) { logHist = []; }
   return logHist;
 }
@@ -179,7 +186,7 @@ function logHistSave() {
   const now = Date.now();
   if (now - logSaveT < 800) return;
   logSaveT = now;
-  try { localStorage.setItem(LOG_KEY, JSON.stringify(logHist.slice(-LOG_MAX))); }
+  try { sessionStorage.setItem(LOG_KEY, JSON.stringify(logHist.slice(-LOG_MAX))); }
   catch (_) {}
 }
 function logLine(text, cls = "sys", persist = true) {
@@ -220,7 +227,7 @@ function escapeHtml(s) {
 $("btnClear").onclick = () => {
   logEl.innerHTML = "";
   logHist = [];
-  try { localStorage.removeItem(LOG_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(LOG_KEY); } catch (e) {}
 };
 
 // One primary button carries the whole flow: idle -> searching -> in call.

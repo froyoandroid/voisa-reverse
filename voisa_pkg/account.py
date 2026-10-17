@@ -223,7 +223,7 @@ def save_pool(entries: list) -> None:
     os.replace(tmp, POOL)
 
 
-def pool_lease(min_age_s: float = 0, log=print) -> dict:
+def pool_lease(min_age_s: float = 0, log=print, exclude=None) -> dict:
     """Take an identity from the pool, creating one if the pool is empty.
 
     Least-recently-used, so identities are rotated rather than reused back to
@@ -238,7 +238,9 @@ def pool_lease(min_age_s: float = 0, log=print) -> dict:
     with _pool_guard():
         entries = load_pool()
         now = _t.time()
-        usable = [e for e in entries if e.get("cookie")]
+        busy = set(exclude or ())
+        # skip identities a live session already holds (identity is per session)
+        usable = [e for e in entries if e.get("cookie") and e["cookie"] not in busy]
         if min_age_s:
             aged = [e for e in usable if now - e.get("created", now) >= min_age_s]
             if aged:
