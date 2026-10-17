@@ -1,5 +1,5 @@
 /* ---------- MITM / relay ---------- */
-.mitmbar, .poolpanel, .recpanel { grid-column: 1 / -1; }
+.mitmbar, .recpanel { grid-column: 1 / -1; }
 .legs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .leg { display: flex; flex-direction: column; gap: 11px; }
 .leg h2 { margin-bottom: 2px; }
@@ -23,13 +23,6 @@
 .meter i { display: block; width: 0; height: 100%; background: var(--ok); transition: width .08s linear; }
 .meter i[data-audible="0"] { background: var(--faint); }
 
-.poollist { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 9px; margin-top: 12px; }
-.poolrow {
-  display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center;
-  padding: 10px 11px; background: var(--input); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); font-size: 12px;
-}
-.poolrow .id { font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.poolrow .meta, .poolrow .uses { color: var(--muted); font-size: 11px; }
 
 /* ---------- developer tools ---------- */
 #view-settings .panel { grid-column: 1 / -1; }

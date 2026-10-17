@@ -8,9 +8,9 @@
   display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 9px; align-items: center;
   padding: 9px 11px; background: var(--input); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); font-size: 12px;
 }
-.savedrow .who, .poolrow .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.savedrow .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .savedrow .sid { font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.savedrow .sub, .poolrow .sub { color: var(--muted); font-size: 11px; }
+.savedrow .sub { color: var(--muted); font-size: 11px; }
 
 .rec, .recrow {
   display: flex; align-items: center; gap: 10px;
