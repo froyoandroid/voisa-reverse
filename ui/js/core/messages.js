@@ -38,6 +38,7 @@ function handle(m) {
         if (m.username) leg.username = m.username;
         if (m.deviceId) leg.deviceId = m.deviceId;
         legInfo(leg);
+        poolRefresh();
       } else if (m.what === "log") logLine(`Leg ${leg.key}: ${m.text}`, "sys");
       break;
     }
