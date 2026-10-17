@@ -23,25 +23,22 @@ import (
 	"voisa/internal/logs"
 	"voisa/internal/protocol"
 	"voisa/internal/sio"
-	"voisa/internal/store"
+	"voisa/internal/users"
 )
 
 var (
-	root     string
-	uiDir    string
-	mediaDir string
-	pool     *store.Pool
-	saved    *store.Saved
+	root  string
+	uiDir string
 )
 
 // New builds the HTTP handler for a project root (data files and ui/).
 func New(projectRoot string) http.Handler {
 	root = projectRoot
 	uiDir = filepath.Join(root, "ui")
-	mediaDir = filepath.Join(root, "media")
 	logs.Init(filepath.Join(root, "voisa.log"))
-	pool = store.NewPool(root)
-	saved = store.NewSaved(root)
+	if err := users.Init(root); err != nil {
+		panic(err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", index)
@@ -54,37 +51,39 @@ func New(projectRoot string) http.Handler {
 	})
 	mux.HandleFunc("POST /api/new", apiNew)
 	mux.HandleFunc("GET /api/pool", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, M{"entries": pool.Status()})
+		writeJSON(w, 200, M{"entries": users.For(w, r).Pool.Status()})
 	})
 	mux.HandleFunc("POST /api/pool/add", apiPoolAdd)
 	mux.HandleFunc("DELETE /api/pool/{device_id}", apiPoolRemove)
 	mux.HandleFunc("POST /api/pool/clear", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, M{"cleared": pool.Clear(poolLog)})
+		u := users.For(w, r)
+		writeJSON(w, 200, M{"cleared": u.Pool.Clear(userLog(u, "pool"))})
 	})
 	mux.HandleFunc("POST /api/pool/resolve_names", apiResolveNames)
 	mux.HandleFunc("GET /api/saved", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, M{"entries": saved.Status()})
+		writeJSON(w, 200, M{"entries": users.For(w, r).Saved.Status()})
 	})
 	mux.HandleFunc("POST /api/saved", apiSavedAdd)
 	mux.HandleFunc("POST /api/saved/use", apiSavedUse)
 	mux.HandleFunc("DELETE /api/saved/{device_id}", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, M{"removed": saved.Remove(r.PathValue("device_id"))})
+		writeJSON(w, 200, M{"removed": users.For(w, r).Saved.Remove(r.PathValue("device_id"))})
 	})
 	mux.HandleFunc("POST /api/login", apiLogin)
 
 	mux.HandleFunc("GET /api/log", apiLog)
 	mux.HandleFunc("DELETE /api/log", func(w http.ResponseWriter, r *http.Request) {
-		_ = os.Remove(logs.Path())
+		_ = os.Remove(users.For(w, r).Log())
 		writeJSON(w, 200, M{"cleared": true})
 	})
 	mux.HandleFunc("GET /api/log/download", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := os.Stat(logs.Path()); err != nil {
+		lp := users.For(w, r).Log()
+		if _, err := os.Stat(lp); err != nil {
 			writeJSON(w, 404, M{"detail": "no log yet"})
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="voisa.log"`)
-		http.ServeFile(w, r, logs.Path())
+		http.ServeFile(w, r, lp)
 	})
 
 	mux.HandleFunc("GET /api/recordings", apiRecordings)
@@ -121,7 +120,10 @@ func readBody(r *http.Request) M {
 	return m
 }
 
-func poolLog(m string) { logs.Write(m, "pool", "") }
+// userLog writes one user's HTTP-side lines (pool, saved) to their log.
+func userLog(u *users.User, level string) func(string) {
+	return func(m string) { logs.WriteUser(u.Log(), m, level, "") }
+}
 
 // page
 
@@ -158,6 +160,15 @@ func assetVersion() string {
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
+	u := users.For(w, r)
+	// one-time adoption of the old single-user data (users/CLAIM_TOKEN)
+	if tok := r.URL.Query().Get("claim"); tok != "" {
+		if users.Claim(u, tok) {
+			logs.WriteUser(u.Log(), "[users] old shared identities and recordings claimed by this browser", "sys", "")
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	b, err := os.ReadFile(filepath.Join(uiDir, "index.html"))
 	if err != nil {
 		http.Error(w, "ui missing", 500)
@@ -175,7 +186,8 @@ func index(w http.ResponseWriter, r *http.Request) {
 // brand-new account seconds before a call is the anomaly. Never one a live
 // session already holds.
 func apiNew(w http.ResponseWriter, r *http.Request) {
-	e, err := pool.Lease(cookiesInUse(nil), poolLog)
+	u := users.For(w, r)
+	e, err := u.Pool.Lease(cookiesInUse(nil), userLog(u, "pool"))
 	if err != nil {
 		writeJSON(w, 500, M{"detail": err.Error()})
 		return
@@ -184,12 +196,13 @@ func apiNew(w http.ResponseWriter, r *http.Request) {
 }
 
 func apiPoolAdd(w http.ResponseWriter, r *http.Request) {
+	u := users.For(w, r)
 	n := 1
 	if v, ok := readBody(r)["n"].(float64); ok {
 		n = int(v)
 	}
 	n = max(1, min(n, 20))
-	made, err := pool.Add(n, poolLog)
+	made, err := u.Pool.Add(n, userLog(u, "pool"))
 	if err != nil && len(made) == 0 {
 		writeJSON(w, 500, M{"detail": err.Error()})
 		return
@@ -198,34 +211,37 @@ func apiPoolAdd(w http.ResponseWriter, r *http.Request) {
 	for _, e := range made {
 		ids = append(ids, e["deviceId"])
 	}
-	writeJSON(w, 200, M{"added": ids, "total": len(pool.Load())})
+	writeJSON(w, 200, M{"added": ids, "total": len(u.Pool.Load())})
 }
 
 func apiPoolRemove(w http.ResponseWriter, r *http.Request) {
+	u := users.For(w, r)
 	id := r.PathValue("device_id")
-	if !pool.Remove(id, poolLog) {
+	if !u.Pool.Remove(id, userLog(u, "pool")) {
 		writeJSON(w, 404, M{"detail": "no such identity"})
 		return
 	}
-	writeJSON(w, 200, M{"removed": id, "total": len(pool.Load())})
+	writeJSON(w, 200, M{"removed": id, "total": len(u.Pool.Load())})
 }
 
 // apiResolveNames backfills missing nicknames: the name is only disclosed
 // over the socket, so each nameless entry gets one short connection.
 func apiResolveNames(w http.ResponseWriter, r *http.Request) {
+	u := users.For(w, r)
+	poolLog := userLog(u, "pool")
 	resolved := M{}
-	for _, e := range pool.Missing() {
+	for _, e := range u.Pool.Missing() {
 		did, _ := e["deviceId"].(string)
 		cookie, _ := e["cookie"].(string)
 		name := fetchUsername(cookie)
 		if name != "" {
-			pool.SetUsername(name, did, cookie, poolLog)
+			u.Pool.SetUsername(name, did, cookie, poolLog)
 			resolved[did] = name
 		} else {
 			poolLog(fmt.Sprintf("[pool] resolve %s: no name (dead cookie?)", did))
 		}
 	}
-	writeJSON(w, 200, M{"resolved": resolved, "total": len(pool.Load())})
+	writeJSON(w, 200, M{"resolved": resolved, "total": len(u.Pool.Load())})
 }
 
 func fetchUsername(cookie string) string {
@@ -254,25 +270,27 @@ func fetchUsername(cookie string) string {
 }
 
 func apiSavedAdd(w http.ResponseWriter, r *http.Request) {
+	u := users.For(w, r)
 	b := readBody(r)
 	did, cookie := py(orEmpty(b["deviceId"])), py(orEmpty(b["cookie"]))
 	if did == "" || cookie == "" {
 		writeJSON(w, 400, M{"error": "deviceId and cookie required"})
 		return
 	}
-	saved.Add(did, cookie, sget(b, "username"))
-	logs.Write("[saved] identity "+did+" stored", "sys", "")
+	u.Saved.Add(did, cookie, sget(b, "username"))
+	logs.WriteUser(u.Log(), "[saved] identity "+did+" stored", "sys", "")
 	writeJSON(w, 200, M{"saved": did})
 }
 
 func apiSavedUse(w http.ResponseWriter, r *http.Request) {
+	u := users.For(w, r)
 	did := py(orEmpty(readBody(r)["deviceId"]))
-	e := saved.Take(did)
+	e := u.Saved.Take(did)
 	if e == nil {
 		writeJSON(w, 404, M{"error": "not saved"})
 		return
 	}
-	logs.Write("[saved] identity "+did+" adopted", "sys", "")
+	logs.WriteUser(u.Log(), "[saved] identity "+did+" adopted", "sys", "")
 	writeJSON(w, 200, M{"deviceId": e["deviceId"], "cookie": e["cookie"], "username": e["username"]})
 }
 
@@ -300,7 +318,8 @@ func apiLog(w http.ResponseWriter, r *http.Request) {
 		n = v
 	}
 	n = max(1, min(n, 20000))
-	data, _ := os.ReadFile(logs.Path())
+	lp := users.For(w, r).Log()
+	data, _ := os.ReadFile(lp)
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 	if len(data) == 0 {
 		lines = nil
@@ -312,7 +331,7 @@ func apiLog(w http.ResponseWriter, r *http.Request) {
 	if lines == nil {
 		lines = []string{}
 	}
-	writeJSON(w, 200, M{"path": logs.Path(), "total_lines": total, "bytes": len(data), "lines": lines})
+	writeJSON(w, 200, M{"path": "voisa.log", "total_lines": total, "bytes": len(data), "lines": lines})
 }
 
 // recordings (files left by the removed server-side engine)
@@ -322,7 +341,7 @@ func recName(name string) bool {
 }
 
 func apiRecordings(w http.ResponseWriter, r *http.Request) {
-	ents, _ := os.ReadDir(mediaDir)
+	ents, _ := os.ReadDir(users.For(w, r).Media())
 	files := []M{}
 	var total int64
 	for _, e := range ents {
@@ -351,7 +370,7 @@ func apiRecordingFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, M{"detail": "bad name"})
 		return
 	}
-	p := filepath.Join(mediaDir, name)
+	p := filepath.Join(users.For(w, r).Media(), name)
 	if st, err := os.Stat(p); err != nil || st.IsDir() {
 		writeJSON(w, 404, M{"detail": "not found"})
 		return
@@ -371,7 +390,7 @@ func apiRecordingDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, M{"detail": "bad name"})
 		return
 	}
-	if err := os.Remove(filepath.Join(mediaDir, name)); err != nil {
+	if err := os.Remove(filepath.Join(users.For(w, r).Media(), name)); err != nil {
 		writeJSON(w, 404, M{"detail": "not found"})
 		return
 	}
@@ -380,6 +399,7 @@ func apiRecordingDelete(w http.ResponseWriter, r *http.Request) {
 
 func apiRecordingsClear(w http.ResponseWriter, r *http.Request) {
 	n := 0
+	mediaDir := users.For(w, r).Media()
 	ents, _ := os.ReadDir(mediaDir)
 	for _, e := range ents {
 		name := e.Name()
@@ -396,12 +416,15 @@ func apiRecordingsClear(w http.ResponseWriter, r *http.Request) {
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	// Same-origin is not enforced, matching the old server; nginx fronts it.
+	u := users.For(w, r) // before Accept, so a new owner cookie rides the 101
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		return
 	}
 	conn.SetReadLimit(4 << 20)
-	s := newSession(conn)
+	s := newSession(conn, u)
+	logs.Bind(s.cid, u.Log())
+	defer logs.Unbind(s.cid)
 	sessMu.Lock()
 	sessions[s] = true
 	sessMu.Unlock()
