@@ -117,7 +117,10 @@ const WAVE = (() => {
     g.clearRect(0, 0, W, H);
 
     // grid: centre line + quarters
-    g.strokeStyle = "rgba(255,255,255,.07)"; g.lineWidth = 1;
+    const css = getComputedStyle(document.documentElement);
+    const WV = (css.getPropertyValue("--wave") || "254,127,45").trim();
+    const WI = (css.getPropertyValue("--wave-idle") || "138,154,167").trim();
+    g.strokeStyle = css.getPropertyValue("--grid").trim() || "rgba(255,255,255,.07)"; g.lineWidth = 1;
     [0.25, 0.5, 0.75].forEach(f => {
       g.beginPath(); g.moveTo(0, H * f); g.lineTo(W, H * f); g.stroke();
     });
@@ -130,14 +133,14 @@ const WAVE = (() => {
       // fresh messages bright, stale history dimmed
       const age = (i / HIST);
       g.fillStyle = v > 0.001
-        ? `rgba(255,255,68,${0.85 - age * 0.55})`
-        : "rgba(120,130,140,.25)";
+        ? `rgba(${WV},${0.9 - age * 0.55})`
+        : `rgba(${WI},.25)`;
       g.fillRect(x, mid - h, Math.max(1, barW - 1), h * 2);
     });
 
     // peak-hold line, decays after 1.2s
     if (peakAt && performance.now() - peakAt < 1200 && peakHold > 0.001) {
-      g.strokeStyle = "rgba(255,255,68,.9)"; g.lineWidth = 1.5;
+      g.strokeStyle = `rgba(${WV},.95)`; g.lineWidth = 1.5;
       const y = mid - peakHold * mid * 0.95;
       g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
       g.beginPath(); g.moveTo(0, H - y); g.lineTo(W, H - y); g.stroke();
@@ -544,7 +547,7 @@ function showPeer(dialog, phase) {
     avatar: dialog.avatar || peerInfo?.avatar || null,
   };
 
-  const color = (peerInfo.avatar && peerInfo.avatar.color) || "#ffff44";
+  const color = (peerInfo.avatar && peerInfo.avatar.color) || "#FE7F2D";
   const initial = name.trim()[0] || "?";
   const tag = phase === "live"
     ? '<span class="tag live">In call</span>'
@@ -1176,6 +1179,36 @@ document.querySelectorAll(".nav[data-view]").forEach((b) => {
     if (SB.phone()) SB.close();          // a pick on the phone drawer closes it
   };
 });
+
+// theme (dark / light), switch at the bottom of the sidebar
+// The <head> script applies the saved theme before CSS loads, so there is no
+// flash; this wires the buttons and keeps them in sync.
+const THEME = (() => {
+  const KEY = "voisa:theme";
+  const root = document.documentElement;
+  const SUN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  const MOON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+  const get = () => root.getAttribute("data-theme") === "light" ? "light" : "dark";
+  function set(t) {
+    root.setAttribute("data-theme", t);
+    try { localStorage.setItem(KEY, t); } catch (_) {}
+    paint();
+  }
+  function paint() {
+    const t = get();
+    $("themeDark") && $("themeDark").setAttribute("aria-pressed", String(t === "dark"));
+    $("themeLight") && $("themeLight").setAttribute("aria-pressed", String(t === "light"));
+    const i = $("themeIcon");
+    if (i) { i.innerHTML = t === "dark" ? SUN : MOON; i.title = t === "dark" ? "Light mode" : "Dark mode"; }
+    const m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.content = t === "dark" ? "#000000" : "#EAECF0";
+  }
+  $("themeDark") && ($("themeDark").onclick = () => set("dark"));
+  $("themeLight") && ($("themeLight").onclick = () => set("light"));
+  $("themeIcon") && ($("themeIcon").onclick = () => set(get() === "dark" ? "light" : "dark"));
+  paint();
+  return { get, set };
+})();
 
 // collapsible sidebar
 // Desktop/tablet: docked, collapsible to an icon rail; the choice is remembered.
