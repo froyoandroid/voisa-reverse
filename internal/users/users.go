@@ -48,8 +48,27 @@ type User struct {
 // Log is the owner's own activity log.
 func (u *User) Log() string { return filepath.Join(u.Dir, "voisa.log") }
 
-// Media holds the owner's legacy server-side recordings.
+// Media holds the owner's recordings (internal/recs).
 func (u *User) Media() string { return filepath.Join(u.Dir, "media") }
+
+// MediaDirs lists every owner's media directory, for the recordings janitor.
+func MediaDirs() []string {
+	ents, _ := os.ReadDir(base)
+	var out []string
+	for _, e := range ents {
+		if e.IsDir() && idRe.MatchString(e.Name()) {
+			if d := filepath.Join(base, e.Name(), "media"); dirExists(d) {
+				out = append(out, d)
+			}
+		}
+	}
+	return out
+}
+
+func dirExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
+}
 
 var (
 	mu    sync.Mutex
