@@ -12,7 +12,8 @@ function renderAcct() {
   // is a bearer credential (whoever reads it owns the account) and this page is
   // reachable over the network. Only the display name lands in the header.
   const head = $("acctHead");
-  if (head) head.textContent = acct.username || "assigning…";
+  // no identity until the first Start/search
+  if (head) head.textContent = acct.username || (acct.cookie ? "assigning…" : "not started");
   const core = $("orbCore");
   if (core && !core.classList.contains("has-peer"))
     core.textContent = (acct.username || "v").trim()[0] || "v";

@@ -10,7 +10,7 @@ $("btnNew").onclick = async () => {
     acct.cookie = j.cookie;
     acct.username = null;
     acct.premium = false;
-    saveIdentity({ deviceId: j.deviceId, cookie: j.cookie });
+    saveIdentity({ deviceId: j.deviceId, cookie: j.cookie, since: j.since });
     renderAcct();
     logLine(`New identity: ${j.deviceId}`, "match");
     myGen++;
