@@ -61,8 +61,7 @@ function legInfo(leg) {
   const who = leg.key === "A" ? "Peer A" : "Peer B";
   box.innerHTML =
     row("Relay", leg.username || (leg.cookie ? "…" : "Not started")) +
-    row(who, leg.peer || "—") +
-    row("Match", leg.matchId ? leg.matchId.slice(0, 8) : "—");
+    row(who, leg.peer || "—");   // Match id row removed (user request)
 }
 
 // Ask the server for a brand-new account for this leg (never a pool one).
