@@ -1137,3 +1137,5 @@ html[data-theme="light"] .s-grain { mix-blend-mode: multiply; filter: invert(1);
 .rd-main:hover .rd-ico { transform: none; }
 .rd-main:hover .rd-play::after { transform: translateX(1px); transition: transform .2s var(--ease); }
 .relay-deck button { justify-content: flex-start; }
+.relay-deck button { padding-right: 26px; }
+.rd-main { min-width: 0; }

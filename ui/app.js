@@ -1976,7 +1976,8 @@ function recDeck(btn, on, live) {
   btn.classList.toggle("on", on);
   btn.setAttribute("aria-pressed", String(on));
   btn.querySelector('[data-role="lbl"]').textContent = on ? "Recording" : "Record";
-  btn.querySelector('[data-role="sub"]').textContent = on ? (live ? "Tap to stop" : "Armed, waits for peers") : "Both legs";
+  const sub = btn.querySelector('[data-role="sub"]');   // descriptions removed (user request)
+  if (sub) sub.textContent = on ? (live ? "Tap to stop" : "Armed, waits for peers") : "";
 }
 $("btnMitmRec")?.addEventListener("click", () => {
   const anyRec = LEGS.A.recording || LEGS.B.recording;
