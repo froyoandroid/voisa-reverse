@@ -29,7 +29,7 @@ ui/
   js/rtc/             browser WebRTC peer, negotiation, recording
   js/identity/        identity sheet
   js/recordings/      recordings list
-  js/relay/           relay legs, bridge audio, OPFS recording, pool
+  js/relay/           relay legs, bridge audio, OPFS recording
   js/shell/           views, theme, sidebar
   js/dev/             raw event emitter
   js/main.js          boot; loaded last
