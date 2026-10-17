@@ -13,25 +13,28 @@ internal/
   account/            createAccount, device ids, fresh/register identities
   store/              voisa_pool.json (LRU lease) and voisa_saved.json
   users/              anonymous owners: voisa_uid cookie -> users/<id>/
+  recs/               recordings in users/<id>/media: chunk append, sidecar
+                      meta, ffmpeg remux on stop, 24 h janitor
   logs/               voisa.log writer, trimmed to 24 h
   server/
     http.go           routes, static files, index cache-busting, /ws handler
     session.go        one browser tab <-> one upstream socket (Call path)
     leg.go            relay legs A/B: own identity + socket, requeue, loopback
     commands.go       /ws command table
+    recordings.go     /api/recordings and /api/rec/{start,chunk,stop}
     util.go           JSON and log-format helpers
 
 ui/
   index.html          markup; loads css/ in numbered order, then js/
-  css/01-16-*.css     cascade order matters: tokens, base, shell, ... overrides last
-  js/core/            state, log, socket, message router, redaction
+  css/01-17-*.css     cascade order matters: tokens, base, shell, ... overrides last
+  js/core/            state, prefs (Settings), log, socket, message router, redaction
   js/call/            Call view (stage, deck, events, peer card, search, talk)
   js/rtc/             browser WebRTC peer, negotiation, recording
   js/identity/        identity sheet
-  js/recordings/      recordings list
-  js/relay/           relay legs, bridge audio, OPFS recording, pool
+  js/recordings/      ServerRec uploader, shared rows, call recordings list
+  js/relay/           relay legs, bridge audio, relay recording, pool
   js/shell/           views, theme, sidebar
-  js/dev/             raw event emitter
+  js/settings/        Settings view: audio, call, relay, storage
   js/main.js          boot; loaded last
 ```
 
@@ -65,6 +68,30 @@ identities on every Start (`/api/relay/fresh`), never from the pool.
 
 Old single-user data in the root is adopted once via `/?claim=<token>`, with
 the token in `users/CLAIM_TOKEN`.
+
+## Recordings
+
+The browser records (MediaRecorder) and the server stores. `ServerRec`
+(`js/recordings/upload.js`) calls `POST /api/rec/start`, then uploads every
+1 s chunk in order to `/api/rec/<name>/chunk?seq=n`, then `/stop`. The server
+appends each chunk at once (`internal/recs`), so a closed tab keeps
+everything up to the last second; a recording with no chunk for 20 s is
+closed on its own. On stop, ffmpeg remuxes it (`-c copy`) so players get a
+duration and can seek. Each recording is deleted 24 hours after it started
+(janitor every 5 min). Old `incoming-*` files from the removed server engine
+are listed as "Old" and never auto-deleted.
+
+A call recording is both sides (peer and mic) mixed in an AudioContext. A
+relay recording is three files, A, B and the A+B mix, sharing one group.
+Browser storage (OPFS) is no longer written; Settings > Storage can remove
+leftovers from before.
+
+## Settings
+
+Per-browser preferences in localStorage `voisa:settings` (`js/core/prefs.js`):
+mic and speaker devices, echo, noise and gain processing, start muted,
+default language, keep searching, auto-record calls and relay. Never
+identities or cookies.
 
 ## Conventions
 
