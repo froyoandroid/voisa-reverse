@@ -1,0 +1,42 @@
+/* ---- compact call stage (user: main area too big; controls higher) ----
+   Content sits at the top instead of being stretched to a full viewport, the
+   deck follows the copy directly, and the language is a bare tappable pill. */
+.stage { min-height: 0; padding: clamp(24px, 3vw, 44px); }
+.stage .stage-body { flex: 0 0 auto; margin: clamp(16px, 2vw, 28px) 0 0; gap: clamp(18px, 3vw, 40px); }
+.stage-title { font-size: clamp(52px, 6.6vw, 112px); }
+.stage-who { margin-top: 16px; }
+.stage .peer, .stage .match { margin-top: 14px; }
+.stage .orb { width: clamp(140px, 14vw, 220px); height: clamp(140px, 14vw, 220px); margin-right: clamp(0px, 2vw, 36px); }
+.stage .orb-core { font-size: clamp(22px, 2vw, 34px); }
+.stage .deck { margin: clamp(18px, 2vw, 26px) 0 clamp(18px, 2vw, 26px); }
+.stage .deck .go-btn { flex: 0 1 300px; }
+.stage .lang-pill, .stage .deck button { height: 52px; }
+.stage .lang-pill { position: relative; padding: 0 16px 0 0; cursor: pointer; }
+.stage .lang-pill select {
+  height: 50px; padding: 0 30px 0 20px; cursor: pointer;
+  appearance: none; -webkit-appearance: none; font-weight: 700;
+}
+.stage .lang-pill::after {
+  content: "▾"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-size: 12px; pointer-events: none;
+}
+.stage .lang-pill:hover { border-color: var(--line-strong); }
+.stage .scope canvas { height: 52px; }
+@media (max-width: 720px) {
+  .stage .orb { width: 96px; height: 96px; }
+  .stage .lang-pill { flex: 0 0 auto; }
+}
+/* the composition follows the compact content: disc and arcs centre on the orb */
+.stage .s-disc { width: min(46vw, 560px); top: clamp(150px, 13vw, 210px); right: max(-14vw, -180px); }
+.stage .s-arc { width: min(70vw, 860px); top: clamp(150px, 13vw, 210px); right: max(-26vw, -330px); }
+.stage .s-arc2 { width: min(96vw, 1180px); top: clamp(150px, 13vw, 210px); right: max(-38vw, -480px); }
+.stage .s-pip { top: clamp(60px, 6vw, 96px); }
+@media (max-width: 720px) {
+  .stage .s-disc { width: 240px; right: -90px; top: 120px; }
+  .stage .s-arc { width: 380px; right: -170px; top: 120px; }
+}
+@media (max-width: 720px) {
+  .stage .deck { flex-wrap: nowrap; }
+  .stage .deck .go-btn { order: 0; flex: 1 1 0; min-width: 0; }
+  .stage .lang-pill select { padding-left: 16px; }
+}

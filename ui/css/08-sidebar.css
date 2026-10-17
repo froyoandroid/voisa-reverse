@@ -1,0 +1,55 @@
+/* ---------- collapsible sidebar ---------- */
+/* One sidebar, three behaviours, driven by two body classes set in app.js:
+     desktop/tablet : docked; body.sb-collapsed shrinks it to an icon rail
+     phone (<=720)  : off-canvas drawer, hidden by default; body.sb-open
+                      slides it in over a scrim
+   Width is a variable so the shell grid and the rail animate together. */
+:root { --sb-w: 236px; --sb-rail: 72px; }
+
+.shell { grid-template-columns: var(--sb-cur, var(--sb-w)) minmax(0, 1fr);
+         transition: grid-template-columns .22s var(--ease); }
+body.sb-collapsed .shell { --sb-cur: var(--sb-rail); }
+
+.sidebar { overflow: hidden; width: var(--sb-cur, var(--sb-w)); transition: width .22s var(--ease), transform .25s var(--ease); }
+
+.sb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 0 0 18px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px; min-width: 0; }
+.brand-mark {
+  flex: 0 0 auto; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 17px; font-weight: 800; letter-spacing: 0;
+}
+.brand-text { display: block; white-space: nowrap; transition: opacity .15s; }
+
+.sb-toggle, .sb-burger {
+  flex: 0 0 auto; width: 34px; height: 34px; padding: 0;
+  background: transparent; border: 1px solid transparent; color: var(--muted); border-radius: var(--radius-xs);
+}
+.sb-toggle:hover, .sb-burger:hover { background: var(--surface-3); color: var(--fg); border-color: var(--line); }
+
+.nav span:not(.nav-icon), .nav-label, .sidebar .foot { white-space: nowrap; transition: opacity .15s; }
+
+/* rail state */
+body.sb-collapsed .sidebar { padding-left: 10px; padding-right: 10px; }
+body.sb-collapsed .sb-head { flex-direction: column; align-items: center; gap: 12px; }
+body.sb-collapsed .brand-text,
+body.sb-collapsed .nav-label,
+body.sb-collapsed .sidebar .foot,
+body.sb-collapsed .nav span:not(.nav-icon) { display: none; }
+body.sb-collapsed .nav { justify-content: center; padding: 12px 0; }
+body.sb-collapsed .nav-icon { font-size: 17px; }
+body.sb-collapsed .sb-toggle svg { transform: scaleX(-1); }
+
+/* tooltip on rail items */
+body.sb-collapsed .nav { position: relative; }
+body.sb-collapsed .nav::after {
+  content: attr(data-label); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+  padding: 5px 9px; border-radius: 6px; background: var(--surface-3); border: 1px solid var(--line);
+  color: var(--fg); font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s;
+}
+body.sb-collapsed .nav:hover::after { opacity: 1; }
+body.sb-collapsed .sidebar { overflow: visible; }
+
+/* topbar: only on phones */
+.topbar { display: none; }
+.sb-scrim { display: none; }

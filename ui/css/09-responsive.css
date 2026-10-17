@@ -1,0 +1,61 @@
+/* ---------- responsive ---------- */
+@media (max-width: 1040px) {
+  main, .view { padding: 24px 22px 48px; }
+}
+
+@media (max-width: 720px) {
+  /* the drawer is out of flow, so the shell is plain block layout here —
+     keeping it a grid let the open drawer squeeze the content column */
+  .shell, body.sb-collapsed .shell { display: block; transition: none; }
+  .content { width: 100%; }
+
+  /* drawer */
+  .sidebar, body.sb-collapsed .sidebar {
+    position: fixed; z-index: 40; top: 0; bottom: 0; left: 0;
+    width: min(82vw, 280px); height: 100dvh;
+    padding: 18px 14px; overflow-y: auto;
+    transform: translateX(-102%);
+    border-right: 1px solid var(--line);
+  }
+  body.sb-open .sidebar { transform: none; }
+  /* the drawer is always full width: undo rail styles */
+  body.sb-collapsed .sb-head { flex-direction: row; align-items: flex-start; }
+  body.sb-collapsed .brand-text, body.sb-collapsed .nav-label,
+  body.sb-collapsed .sidebar .foot { display: block; }
+  body.sb-collapsed .nav span:not(.nav-icon) { display: inline; }
+  body.sb-collapsed .nav { justify-content: flex-start; padding: 11px 12px; }
+  body.sb-collapsed .nav::after { display: none; }
+  .sb-toggle svg { transform: none !important; }
+
+  .sb-scrim {
+    display: block; position: fixed; inset: 0; z-index: 35;
+    background: var(--scrim);
+    opacity: 0; pointer-events: none; transition: opacity .2s var(--ease);
+  }
+  .sb-scrim[hidden] { display: block !important; }
+  body.sb-open .sb-scrim { opacity: 1; pointer-events: auto; }
+  body.sb-open { overflow: hidden; }
+
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-title { font-weight: 700; letter-spacing: -.01em; }
+
+  main, .view { padding: 14px 12px 28px; }
+  .legs { grid-template-columns: 1fr; }
+  .panel { padding: 16px; }
+  .call-controls { flex-direction: column; }
+  .call-controls .sel { justify-content: space-between; }
+  .row > button, .row > input, .row > select { flex: 1 1 auto; }
+  .kv { grid-template-columns: 1fr; gap: 2px; }
+  .savedrow { grid-template-columns: minmax(0,1fr) auto; }
+  .logfull { height: calc(100dvh - 210px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell, .sidebar, .sb-scrim { transition: none; }
+}

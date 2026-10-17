@@ -1,0 +1,96 @@
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.hidden { display: none !important; }
+
+html { background: var(--bg); -webkit-text-size-adjust: 100%; }
+body {
+  transition: background-color .25s var(--ease), color .25s var(--ease);
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+    color: var(--fg);
+  font: 14px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; }
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--fg); }
+
+/* scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+
+/* ---------- form controls ---------- */
+button, input, select { font: inherit; color: var(--fg); }
+
+button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  padding: 9px 14px;
+  font-weight: 600; letter-spacing: -.01em;
+  cursor: pointer;
+  transition: background .16s var(--ease), border-color .16s var(--ease),
+              transform .08s var(--ease), box-shadow .16s var(--ease), color .16s;
+  white-space: nowrap;
+}
+button:hover { background: var(--hover); border-color: var(--line-strong); }
+button:active { transform: translateY(1px); }
+button:focus-visible { outline: none; box-shadow: var(--ring); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent); color: var(--accent-ink); font-weight: 700;
+}
+button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+
+button.go { background: color-mix(in srgb, var(--ok) 12%, transparent); border-color: color-mix(in srgb, var(--ok) 40%, transparent); color: var(--ok); }
+button.go:hover { background: color-mix(in srgb, var(--ok) 20%, transparent); border-color: color-mix(in srgb, var(--ok) 60%, transparent); }
+button.go.on, #btnTalk.on { background: var(--ok); border-color: var(--ok); color: #000; }
+
+button.rec { background: color-mix(in srgb, var(--err) 10%, transparent); border-color: color-mix(in srgb, var(--err) 40%, transparent); color: var(--err); }
+button.rec.on { background: var(--err); border-color: var(--err); color: #fff; }
+
+button.quiet { background: transparent; border-color: var(--line-soft); color: var(--fg-dim); }
+button.quiet:hover { background: var(--surface-2); color: var(--fg); }
+
+button.on { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); }
+
+.mini, button.mini {
+  background: transparent; border: 1px solid transparent; color: var(--muted);
+  padding: 4px 9px; font-size: 12px; font-weight: 600; border-radius: var(--radius-xs);
+}
+.mini:hover, button.mini:hover { background: var(--surface-2); color: var(--fg); }
+
+#btnMitmStop { background: color-mix(in srgb, var(--err) 10%, transparent); border-color: color-mix(in srgb, var(--err) 40%, transparent); color: var(--err); }
+#btnMitmStop:hover { background: color-mix(in srgb, var(--err) 18%, transparent); border-color: color-mix(in srgb, var(--err) 60%, transparent); }
+
+input, select {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--input);
+  color: var(--fg);
+  outline: 0;
+  transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+}
+input::placeholder { color: var(--faint); }
+input:focus, select:focus { border-color: var(--accent); box-shadow: var(--ring); }
+
+select {
+  cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='%237d8894' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+}

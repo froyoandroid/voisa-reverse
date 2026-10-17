@@ -1,0 +1,56 @@
+/* ---- relay controls: one main action + record toggle; bridge lives on the spine ---- */
+.relay-deck { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.relay-deck button { height: 64px; padding: 0 22px 0 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 12px; text-align: left; }
+.rd-txt { display: flex; flex-direction: column; line-height: 1.15; }
+.rd-txt b { font-size: 15px; font-weight: 800; }
+.rd-txt small { font-size: 11px; font-weight: 500; opacity: .7; }
+.rd-ico, .rd-dot { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; }
+.rd-main { min-width: 230px; background: var(--accent); color: #000; border: 0; }
+.rd-main .rd-ico { background: #000; color: var(--accent); }
+.rd-main:hover .rd-ico { transform: translateX(2px); transition: transform .2s var(--ease); }
+#btnMitmStop.rd-stop { background: transparent; color: var(--err); border: 1.5px solid var(--err); }
+#btnMitmStop.rd-stop .rd-ico { background: var(--err); color: #fff; }
+.rd-tog { background: var(--bg); color: var(--text); border: 1px solid var(--line); }
+.rd-dot { border: 1.5px solid var(--line); position: relative; }
+.rd-dot::after { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--err); }
+.rd-tog.on { border-color: var(--err); color: var(--err); }
+.rd-tog.on .rd-dot { border-color: var(--err); }
+.rd-tog.on .rd-dot::after { animation: pulse 1.2s var(--ease) infinite; }
+.mitmbar #mitmHint { position: relative; z-index: 1; display: block; margin-top: 10px; }
+
+/* bridge toggle on the spine */
+.spine { position: relative; }
+.spine .spine-knot { cursor: pointer; width: 52px; height: 52px; padding: 0; border-radius: 50%; font-size: 18px; font-weight: 700;
+  background: var(--bg); border: 1.5px solid var(--line); color: var(--muted); transition: background .2s, color .2s, border-color .2s; }
+.spine .spine-knot:hover { border-color: var(--accent); color: var(--accent); }
+.spine-cap { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  margin: 8px 0; white-space: nowrap; }
+#view-mitm:has(#btnMitmBridge.on) .spine-cap { color: var(--accent); }
+@media (max-width: 1100px) and (min-width: 721px) { .legs { grid-template-columns: minmax(0,1fr) 88px minmax(0,1fr); } }
+@media (max-width: 720px) {
+  .relay-deck button { flex: 1 1 100%; }
+  .spine { height: auto; padding: 8px 0; gap: 10px; }
+  .spine-cap { margin: 0; }
+}
+
+/* leg controls match the same pill language */
+.leg .row button { height: 44px; border-radius: 999px; padding: 0 18px; }
+.leg .row button[data-act="search"] { border-color: var(--accent); color: var(--accent); }
+.leg .row button[data-act="newid"] { margin-left: auto; }
+
+
+/* relay player buttons: drawn shapes, like the record dot, not text glyphs.
+   The triangle is nudged right by its optical centre (1/6 of its width). */
+.rd-ico { position: relative; font-size: 0; }
+.rd-ico::after { content: ""; display: block; background: currentColor; }
+.rd-play::after {
+  width: 15px; height: 17px; margin-left: 4px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  border-radius: 2px;
+}
+.rd-sq::after { width: 13px; height: 13px; border-radius: 3px; }
+.rd-main:hover .rd-ico { transform: none; }
+.rd-main:hover .rd-play::after { transform: translateX(1px); transition: transform .2s var(--ease); }
+.relay-deck button { justify-content: flex-start; }
+.relay-deck button { padding-right: 26px; }
+.rd-main { min-width: 0; }

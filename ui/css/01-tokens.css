@@ -1,0 +1,107 @@
+/* Voisa — local workspace UI
+   A single dark design system. Split into ordered files (01-15, cascade order matters).
+   Class hooks toggled by js/ are preserved:
+   .hidden, .dot.on/.off, .nav.active, .pill[data-state],
+   .match.empty/.searching/.active, .peer .tag.live/.wait/.done, .meter i,
+   .l.sys/.in/.out/.match/.err/.med, body.offline. */
+
+/* ---------- design tokens ---------- */
+/* Palette: colorhunt 000000 / 233D4D / FE7F2D / EAECF0.
+   Every colour below is a token; html[data-theme] swaps the set. */
+:root, html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink:       #000000;
+  --navy:      #233D4D;
+  --orange:    #FE7F2D;
+  --paper:     #EAECF0;
+
+  --bg:        #000000;
+  --bg-grad:   none;
+  --surface:   #0b151c;
+  --surface-2: #102029;
+  --surface-3: #172c39;
+  --hover:     #1e3746;
+  --line:      #233D4D;
+  --line-soft: #172a36;
+  --line-strong:#2f5064;
+  --input:     #050b0f;
+  --deep:      #03080b;
+  --side-bg:   #0b151c;
+  --topbar-bg: rgba(0,0,0,.78);
+  --scrim:     rgba(0,0,0,.55);
+
+  --fg:        #EAECF0;
+  --fg-dim:    #c5ccd5;
+  --muted:     #8a9aa7;
+  --faint:     #5a6d7a;
+
+  --accent:    #FE7F2D;
+  --accent-2:  #ff9b5a;
+  --accent-ink:#000000;
+  --accent-text:#ff9b5a;
+  --ok:        #5fd69a;
+  --warn:      #ffb15e;
+  --err:       #ff6b6b;
+  --violet:    #8fc2e0;
+  --wave:      254,127,45;
+  --wave-idle: 138,154,167;
+  --grid:      rgba(234,236,240,.07);
+
+  --shadow:    0 20px 50px -24px rgba(0,0,0,.8);
+  --shadow-sm: 0 10px 26px -16px rgba(0,0,0,.85);
+  --ring:      0 0 0 3px rgba(254,127,45,.28);
+
+  --radius:    14px;
+  --radius-sm: 9px;
+  --radius-xs: 6px;
+  --mono:      ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans:      Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ease:      cubic-bezier(.22,.61,.36,1);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg:        #EAECF0;
+  --bg-grad:   none;
+  --surface:   #ffffff;
+  --surface-2: #fbfcfd;
+  --surface-3: #eef1f4;
+  --hover:     #e3e8ed;
+  --line:      #d4dbe2;
+  --line-soft: #e4e8ec;
+  --line-strong:#b8c3cd;
+  --input:     #ffffff;
+  --deep:      #f4f6f8;
+  --side-bg:   #233D4D;
+  --topbar-bg: rgba(234,236,240,.85);
+  --scrim:     rgba(35,61,77,.35);
+
+  --fg:        #000000;
+  --fg-dim:    #233D4D;
+  --muted:     #5b6d7a;
+  --faint:     #8d9aa5;
+
+  --accent:    #FE7F2D;
+  --accent-2:  #ff9248;
+  --accent-ink:#000000;
+  --accent-text:#c95a12;
+  --ok:        #1e9a5a;
+  --warn:      #c26a00;
+  --err:       #d63838;
+  --violet:    #2d6f96;
+  --wave:      254,127,45;
+  --wave-idle: 91,109,122;
+  --grid:      rgba(35,61,77,.10);
+
+  --shadow:    0 20px 50px -28px rgba(35,61,77,.35);
+  --shadow-sm: 0 10px 24px -18px rgba(35,61,77,.4);
+  --ring:      0 0 0 3px rgba(254,127,45,.25);
+}
+
+/* sidebar stays navy in light mode, so its text uses the paper colours */
+html[data-theme="light"] .sidebar {
+  --fg: #EAECF0; --fg-dim: #c9d3da; --muted: #9fb2bf; --faint: #7f95a3;
+  --surface-2: rgba(255,255,255,.07); --surface-3: rgba(255,255,255,.12); --hover: rgba(255,255,255,.12);
+  --line: rgba(255,255,255,.14); --line-soft: rgba(255,255,255,.08); --accent-text: #ffa766;
+  color: var(--fg);
+}

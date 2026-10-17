@@ -1,0 +1,42 @@
+/* ---------- MITM / relay ---------- */
+.mitmbar, .poolpanel, .recpanel { grid-column: 1 / -1; }
+.legs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.leg { display: flex; flex-direction: column; gap: 11px; }
+.leg h2 { margin-bottom: 2px; }
+.leg .pill { margin-left: auto; }
+
+.pill {
+  padding: 4px 10px; border-radius: 99px;
+  background: var(--surface-3); color: var(--muted);
+  font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.pill[data-state=connected], .pill[data-state=audible] { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.pill[data-state=searching] { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.pill[data-state=error], .pill[data-state=ended] { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+
+.leginfo { margin-bottom: 0; }
+.hint.who { margin: -4px 0 0; font-size: 11px; }
+.langsel select { flex: 1; }
+.legaudio { width: 100%; height: 34px; }
+
+.meter { height: 8px; overflow: hidden; border-radius: 99px; background: var(--input); border: 1px solid var(--line); }
+.meter i { display: block; width: 0; height: 100%; background: var(--ok); transition: width .08s linear; }
+.meter i[data-audible="0"] { background: var(--faint); }
+
+.poollist { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 9px; margin-top: 12px; }
+.poolrow {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center;
+  padding: 10px 11px; background: var(--input); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); font-size: 12px;
+}
+.poolrow .id { font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poolrow .meta, .poolrow .uses { color: var(--muted); font-size: 11px; }
+
+/* ---------- developer tools ---------- */
+#view-settings .panel { grid-column: 1 / -1; }
+#payload { flex: 1; font: 12px var(--mono); }
+#evt { min-width: 200px; }
+
+/* ---------- offline freeze ---------- */
+body.offline .panel button:not(.nav),
+body.offline .panel input,
+body.offline .panel select { opacity: .45; pointer-events: none; }

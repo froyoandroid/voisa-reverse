@@ -1,0 +1,53 @@
+/* ---- identity sheet: one action, name-first list ---- */
+.newid {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  height: auto; padding: 14px 16px; border-radius: 16px;
+  background: var(--accent); color: #000; border: 0;
+}
+.newid .plus {
+  width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 24px; font-weight: 700; line-height: 1;
+  background: #000; color: var(--accent); transition: transform .3s var(--ease);
+}
+.newid:hover .plus { transform: rotate(90deg); }
+.newid b { display: block; font-size: 15px; }
+.newid small { display: block; font-size: 12px; opacity: .72; font-weight: 500; }
+.savedlist, #poolList { display: flex; flex-direction: column; gap: 0; margin-top: 18px; }
+.idrow {
+  position: relative; display: grid; grid-template-columns: 44px minmax(0,1fr) auto;
+  align-items: center; gap: 14px; padding: 12px 4px 12px 0;
+  border-bottom: 1px solid var(--line); border-radius: 0; background: transparent;
+}
+.idrow:last-child { border-bottom: 0; }
+.idrow::before { /* tone tick on the left edge */
+  content: ""; position: absolute; left: -14px; top: 14px; bottom: 14px; width: 3px; border-radius: 3px;
+  background: var(--tone); transform: scaleY(0); transition: transform .25s var(--ease);
+}
+.idrow:hover::before, .idrow.live::before { transform: scaleY(1); }
+.idmark {
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: 14px 50% 50% 50%; background: var(--tone); color: #000;
+  font-weight: 800; font-size: 18px; letter-spacing: -.02em;
+}
+.idrow.live .idmark { border-radius: 50%; outline: 2px solid var(--tone); outline-offset: 3px; }
+.idtext { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.idtext b { font-size: 15px; font-weight: 800; letter-spacing: -.01em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idtext small { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-family: var(--mono); }
+.idact { display: flex; align-items: center; gap: 6px; }
+.idlive { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--tone); }
+.idx-del {
+  width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 1px solid var(--line);
+  background: transparent; color: var(--muted); font-size: 18px; line-height: 1; opacity: 0; transition: opacity .2s;
+}
+.idrow:hover .idx-del, .idx-del:focus-visible { opacity: 1; }
+.idx-del:hover { color: var(--danger, #e5484d); border-color: currentColor; }
+@media (hover: none) { .idx-del { opacity: 1; } }
+.idrow.poolrow[data-used="1"] .idmark { opacity: .5; }
+.idrow.poolrow { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 12px 4px 12px 0; }
+.idrow.poolrow:last-child { border-bottom: 0; }
+.idrow .idmark { border-radius: 14px 50% 50% 50%; }
+@media (min-width: 1100px) {
+  #view-mitm #poolList { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); column-gap: 32px; }
+  #view-mitm #poolList .idrow { border-bottom: 1px solid var(--line); }
+}
+.newid { justify-content: flex-start; }

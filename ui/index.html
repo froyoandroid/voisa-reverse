@@ -6,7 +6,22 @@
 <meta name="theme-color" content="#000000">
 <title>Voisa — Local workspace</title>
 <script>try{var t=localStorage.getItem("voisa:theme")||"dark";document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","dark");}</script>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23FE7F2D'/%3E%3Cpath d='M10 10l6 13 6-13' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/css/01-tokens.css">
+<link rel="stylesheet" href="/static/css/02-base.css">
+<link rel="stylesheet" href="/static/css/03-shell.css">
+<link rel="stylesheet" href="/static/css/04-panels.css">
+<link rel="stylesheet" href="/static/css/05-call.css">
+<link rel="stylesheet" href="/static/css/06-sheets.css">
+<link rel="stylesheet" href="/static/css/07-relay.css">
+<link rel="stylesheet" href="/static/css/08-sidebar.css">
+<link rel="stylesheet" href="/static/css/09-responsive.css">
+<link rel="stylesheet" href="/static/css/10-theme-switch.css">
+<link rel="stylesheet" href="/static/css/11-room.css">
+<link rel="stylesheet" href="/static/css/12-canvas.css">
+<link rel="stylesheet" href="/static/css/13-identity-sheet.css">
+<link rel="stylesheet" href="/static/css/14-relay-deck.css">
+<link rel="stylesheet" href="/static/css/15-stage-compact.css">
 </head>
 <body>
 <div class="shell">
@@ -110,6 +125,35 @@
     </div>
   </div>
 </div>
-<script src="/static/app.js"></script>
+<script src="/static/js/core/state.js"></script>
+<script src="/static/js/call/account.js"></script>
+<script src="/static/js/call/wave.js"></script>
+<script src="/static/js/core/log.js"></script>
+<script src="/static/js/call/deck.js"></script>
+<script src="/static/js/core/socket.js"></script>
+<script src="/static/js/core/messages.js"></script>
+<script src="/static/js/core/redact.js"></script>
+<script src="/static/js/call/events.js"></script>
+<script src="/static/js/call/peer-card.js"></script>
+<script src="/static/js/call/controls.js"></script>
+<script src="/static/js/identity/saved.js"></script>
+<script src="/static/js/call/search.js"></script>
+<script src="/static/js/recordings/list.js"></script>
+<script src="/static/js/call/record-talk.js"></script>
+<script src="/static/js/dev/emit.js"></script>
+<script src="/static/js/rtc/peer.js"></script>
+<script src="/static/js/rtc/negotiate.js"></script>
+<script src="/static/js/rtc/recording.js"></script>
+<script src="/static/js/shell/views.js"></script>
+<script src="/static/js/shell/theme.js"></script>
+<script src="/static/js/shell/sidebar.js"></script>
+<script src="/static/js/relay/legs.js"></script>
+<script src="/static/js/relay/leg-state.js"></script>
+<script src="/static/js/relay/bridge-audio.js"></script>
+<script src="/static/js/relay/rec-storage.js"></script>
+<script src="/static/js/relay/rec-list.js"></script>
+<script src="/static/js/relay/controls.js"></script>
+<script src="/static/js/relay/pool.js"></script>
+<script src="/static/js/main.js"></script>
 </body>
 </html>
