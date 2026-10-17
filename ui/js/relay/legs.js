@@ -19,7 +19,7 @@ function makeLeg(key, elId, audioId) {
     gain: null,              // GainNode -> destination -> outbound track
     srcNodes: [],            // MediaStreamAudioSourceNode per incoming track
     peerStream: null,        // the peer's incoming audio (for recording/meter)
-    rec: null, recChunks: [],
+    recording: false,        // mirrors REC.on (see rec-storage.js)
   };
 }
 
@@ -130,6 +130,7 @@ function legEnsureBridged(leg) {
 
 function legTeardown(leg) {
   legClearBus(leg);
+  recUnfeed(leg);
   leg.peerStream = null;
   if (leg.analyser) { try { leg.analyser.disconnect(); } catch (_) {} leg.analyser = null; }
   leg._lvl = 0;

@@ -37,56 +37,144 @@ async function recWriteChunk(handle, offset, blob) {
   await w.close();
 }
 
-function legRecordStart(leg, stream) {
-  try {
-    if (!stream || !stream.getAudioTracks().length) {
-      logLine(`[mitm] leg ${leg.key}: nothing to record yet`, "warn");
-      return;
-    }
-    const mime = legRecMime();
-    leg.rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
-    const name = `relay-${leg.key}-${recStamp()}.webm`;
+// recording graph
+// Why not MediaRecorder on the peer's stream directly (the old way):
+//  - a relay leg changes peer every time a stranger leaves and the leg
+//    requeues. The old pc and its track die, so the recorder kept running on
+//    a dead track, and the next match started a SECOND recorder that wrote
+//    into the same file handle. The result was two WebM headers interleaved
+//    in one file, and players stopped at the first peer change.
+//  - a remote WebRTC track delivers no frames while it is muted or between
+//    packets, and MediaRecorder simply skips that time.
+// Instead every recording reads a stable track from the shared AudioContext.
+// The context renders continuously (silence when no peer is attached), so
+// the timeline never breaks (a keep-alive source fills the gaps between peers). Each new peer is plugged into the same
+// destination, so one recording spans every match.
+//
+//   leg A peer --src--> gain --+--> recA  (relay-A-*.webm: A's stranger only)
+//                              +--> recMix
+//   leg B peer --src--> gain --+--> recB  (relay-B-*.webm: B's stranger only)
+//                              +--> recMix (relay-mix-*.webm: the whole conversation)
+const REC = {
+  on: false,
+  slots: {},      // key -> { key, dest, rec, handle, offset, chain, name }
+  feeds: {},      // leg key -> { stream, src, gain }
+};
 
-    leg.rec.ondataavailable = (e) => {
-      if (!e.data || !e.data.size) return;
-      // serialise writes: a slow flush must never interleave with the next chunk
-      leg.recChain = (leg.recChain || Promise.resolve()).then(async () => {
-        try {
-          if (!leg.recHandle) {
-            const root = await recRoot();
-            leg.recHandle = await root.getFileHandle(name, { create: true });
-            leg.recOffset = 0;
-          }
-          await recWriteChunk(leg.recHandle, leg.recOffset, e.data);
-          leg.recOffset += e.data.size;
-        } catch (err) {
-          logLine(`[mitm] leg ${leg.key} chunk write failed: ${err.message}`, "err");
-        }
-      });
-    };
-    leg.rec.onstop = async () => {
-      try {
-        await (leg.recChain || Promise.resolve());
-        const f = leg.recHandle ? await leg.recHandle.getFile() : null;
-        if (f && f.size) logLine(`[mitm] leg ${leg.key} recording saved: ${name} (${(f.size / 1024).toFixed(0)} KB, in browser)`, "match");
-        else logLine(`[mitm] leg ${leg.key}: nothing recorded`, "warn");
-      } catch (e) {
-        logLine(`[mitm] leg ${leg.key} stop failed: ${e.message}`, "err");
-      }
-      leg.recHandle = null; leg.recOffset = 0; leg.recChain = null;
-      recListRefresh();
-    };
-    // 1s slices: frequent enough that a crash loses at most a second
-    leg.rec.start(1000);
-    leg.recording = true;
-    logLine(`[mitm] leg ${leg.key}: recording to browser storage`, "sys");
+function recSlot(key) {
+  const ctx = BridgeAudio.context();
+  let s = REC.slots[key];
+  if (!s) {
+    s = REC.slots[key] = { key, dest: ctx.createMediaStreamDestination() };
+    s.dest.channelCount = 1;
+    // Keep the destination fed while no peer is plugged in. With no active
+    // input Chrome stops producing frames, and MediaRecorder silently drops
+    // that stretch (a 3 s gap between peers came out as 0 s). An always-on
+    // source at -120 dBFS keeps the clock running and stays inaudible.
+    s.keepAlive = ctx.createConstantSource();
+    s.keepAlive.offset.value = 1e-6;
+    s.keepAlive.connect(s.dest);
+    s.keepAlive.start();
+  }
+  return s;
+}
+
+// Plug a leg's current peer into its recording and the mix. Safe to call at
+// any time: it does nothing while recording is off, and re-plugging the same
+// stream is a no-op.
+function recFeed(leg, stream) {
+  if (!REC.on || !stream || !stream.getAudioTracks().length) return;
+  const cur = REC.feeds[leg.key];
+  if (cur && cur.stream === stream) return;
+  recUnfeed(leg);
+  const ctx = BridgeAudio.context();
+  try {
+    const src = ctx.createMediaStreamSource(stream);
+    const gain = ctx.createGain();
+    src.connect(gain);
+    gain.connect(recSlot(leg.key).dest);
+    gain.connect(recSlot("mix").dest);
+    REC.feeds[leg.key] = { stream, src, gain };
+    logLine(`[mitm] leg ${leg.key}: peer plugged into recording`, "sys");
   } catch (e) {
-    logLine(`[mitm] leg ${leg.key} record failed: ${e.message}`, "err");
+    logLine(`[mitm] leg ${leg.key} record feed failed: ${e.message}`, "err");
   }
 }
 
-function legRecordStop(leg) {
-  leg.recording = false;
-  try { if (leg.rec && leg.rec.state !== "inactive") leg.rec.stop(); } catch (_) {}
-  leg.rec = null;
+function recUnfeed(leg) {
+  const f = REC.feeds[leg.key];
+  if (!f) return;
+  try { f.src.disconnect(); } catch (_) {}
+  try { f.gain.disconnect(); } catch (_) {}
+  delete REC.feeds[leg.key];
+}
+
+function recSlotStart(slot, stamp) {
+  const mime = legRecMime();
+  slot.name = `relay-${slot.key}-${stamp}.webm`;
+  slot.handle = null; slot.offset = 0; slot.chain = Promise.resolve();
+  const rec = new MediaRecorder(slot.dest.stream,
+    Object.assign({ audioBitsPerSecond: 64000 }, mime ? { mimeType: mime } : {}));
+  slot.rec = rec;
+  const name = slot.name;
+  rec.ondataavailable = (e) => {
+    if (!e.data || !e.data.size) return;
+    // serialise writes: a slow flush must never interleave with the next chunk
+    slot.chain = slot.chain.then(async () => {
+      try {
+        if (!slot.handle) {
+          const root = await recRoot();
+          slot.handle = await root.getFileHandle(name, { create: true });
+          slot.offset = 0;
+        }
+        await recWriteChunk(slot.handle, slot.offset, e.data);
+        slot.offset += e.data.size;
+      } catch (err) {
+        logLine(`[mitm] ${slot.key} chunk write failed: ${err.message}`, "err");
+      }
+    });
+  };
+  rec.onstop = async () => {
+    try {
+      await slot.chain;
+      const f = slot.handle ? await slot.handle.getFile() : null;
+      if (f && f.size) logLine(`[mitm] ${slot.key === "mix" ? "mix" : "leg " + slot.key} recording saved: ${name} (${(f.size / 1024).toFixed(0)} KB, in browser)`, "match");
+      else logLine(`[mitm] ${slot.key}: nothing recorded`, "warn");
+    } catch (e) {
+      logLine(`[mitm] ${slot.key} stop failed: ${e.message}`, "err");
+    }
+    slot.handle = null; slot.rec = null;
+    recListRefresh();
+  };
+  // 1s slices: frequent enough that a crash loses at most a second
+  rec.start(1000);
+}
+
+// Start recording both legs and the mix. Called from the Record button (a
+// user gesture, so the AudioContext is allowed to run).
+function relayRecordStart() {
+  if (REC.on) return;
+  if (!window.MediaRecorder) { logLine("[mitm] MediaRecorder is not available in this browser", "err"); return; }
+  const ctx = BridgeAudio.context();
+  if (ctx.state !== "running") ctx.resume().catch(() => {});
+  REC.on = true;
+  const stamp = recStamp();
+  for (const key of ["A", "B", "mix"]) {
+    try { recSlotStart(recSlot(key), stamp); }
+    catch (e) { logLine(`[mitm] ${key} record failed: ${e.message}`, "err"); }
+  }
+  for (const leg of [LEGS.A, LEGS.B]) {
+    leg.recording = true;
+    if (leg.peerStream) recFeed(leg, leg.peerStream);
+  }
+  logLine("[mitm] recording legs A, B and the mix to browser storage", "sys");
+}
+
+function relayRecordStop() {
+  if (!REC.on) return;
+  REC.on = false;
+  for (const leg of [LEGS.A, LEGS.B]) { leg.recording = false; recUnfeed(leg); }
+  for (const slot of Object.values(REC.slots)) {
+    try { if (slot.rec && slot.rec.state !== "inactive") slot.rec.stop(); } catch (_) {}
+  }
 }

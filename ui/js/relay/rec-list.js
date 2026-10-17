@@ -17,7 +17,7 @@ async function recListRefresh() {
     const root = await recRoot();
     const files = [];
     for await (const name of await root.keys()) {
-      if (!/^relay-[AB]-.+\.webm$/.test(name)) continue;
+      if (!/^relay-(A|B|mix)-.+\.webm$/.test(name)) continue;
       const fh = await root.getFileHandle(name);
       const f = await fh.getFile();
       files.push({ name, f, url: URL.createObjectURL(f) });
@@ -29,8 +29,8 @@ async function recListRefresh() {
       return;
     }
     box.innerHTML = files.map(({ name, f, url }) => {
-      const m = name.match(/^relay-([AB])-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.webm$/);
-      const leg = m ? m[1] : "?";
+      const m = name.match(/^relay-(A|B|mix)-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.webm$/);
+      const leg = m ? (m[1] === "mix" ? "A+B" : m[1]) : "?";
       const when = m ? `${m[2]} ${m[3].replace(/-/g, ":")}` : name;
       const kb = (f.size / 1024).toFixed(0);
       return `<div class="recrow">

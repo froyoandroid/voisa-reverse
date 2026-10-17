@@ -23,6 +23,7 @@ function legOnCall(leg, m) {
     // Rebuilding the pc per match is what makes the offer valid. The outbound
     // bus survives separately so the OTHER leg's feed is not unbridged.
     legState(leg, "searching", "Peer left");
+    recUnfeed(leg);               // recording keeps running; the next peer plugs in
     leg.peerStream = null;
     leg.matchId = null;
     leg._offeredFor = null;
@@ -75,7 +76,7 @@ async function legEnsurePc(leg) {
     logLine(`[mitm] leg ${leg.key}: peer audio -> local + onto leg ${other.key}'s outbound`, "med");
     legState(leg, "connected", "bridged");
     bridgeRewire();
-    if (leg.recording) legRecordStart(leg, stream);
+    recFeed(leg, stream);          // no-op unless recording is on
   };
   pc.onicecandidate = (ev) => {
     if (!ev.candidate) return;
@@ -206,6 +207,9 @@ $("btnMitmStart")?.addEventListener("click", async () => {
 $("btnMitmStop")?.addEventListener("click", () => {
   if (mitmLegsIdle()) return;
   legStop(LEGS.A); legStop(LEGS.B);
+  // stopping the relay finalises its recordings, or they would keep
+  // recording silence from the context
+  if (REC.on) { relayRecordStop(); recDeck($("btnMitmRec"), false); }
   const h = $("mitmHint");
   if (h) h.textContent = "Stopped";
   mitmSyncToggle();

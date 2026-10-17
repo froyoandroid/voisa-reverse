@@ -26,19 +26,15 @@ function recDeck(btn, on, live) {
   if (sub) sub.textContent = on ? (live ? "Tap to stop" : "Armed, waits for peers") : "";
 }
 $("btnMitmRec")?.addEventListener("click", () => {
-  const anyRec = LEGS.A.recording || LEGS.B.recording;
   const btn = $("btnMitmRec");
-  if (anyRec) {
-    legRecordStop(LEGS.A); legRecordStop(LEGS.B);
+  if (REC.on) {
+    relayRecordStop();
     recDeck(btn, false);
     logLine("Recording stopped.", "sys");
     return;
   }
-  let started = 0;
-  for (const leg of [LEGS.A, LEGS.B]) {
-    if (leg.peerStream) { legRecordStart(leg, leg.peerStream); started++; }
-    else leg.recording = true;   // arm it: starts when the peer connects
-  }
-  recDeck(btn, true, started);
-  logLine(`Recording ${started ? `${started} live` : "armed"}.`, "sys");
+  relayRecordStart();
+  const live = [LEGS.A, LEGS.B].filter((l) => l.peerStream).length;
+  recDeck(btn, REC.on, live);
+  logLine(`Recording ${live ? `${live} live leg(s)` : "started, waiting for peers"}.`, "sys");
 });
