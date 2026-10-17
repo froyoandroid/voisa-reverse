@@ -43,6 +43,9 @@ func (f *file) save(entries []Entry) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(f.path), 0o700); err != nil {
+		return err
+	}
 	tmp := fmt.Sprintf("%s.%d.tmp", f.path, time.Now().UnixNano())
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
