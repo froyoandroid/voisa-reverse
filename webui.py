@@ -137,9 +137,12 @@ if os.path.isdir(UI_DIR):
 # REST
 @app.get("/api/state")
 async def state():
-    st = voisa.load_store()
-    return {"deviceId": st.get("deviceId"), "cookie": st.get("cookie"),
-            "has_account": bool(st.get("cookie"))}
+    # Identity is per-session now: each browser session holds its own identity
+    # (in localStorage) and supplies it on connect. This endpoint deliberately
+    # does NOT return a shared account cookie — serving one here is exactly what
+    # made identity global, and on a network-reachable page it also handed the
+    # bearer credential to anyone who asked.
+    return {"has_account": False, "per_session": True}
 
 
 @app.post("/api/new")
@@ -810,6 +813,170 @@ def _shuffle(cookie: str):
         return {"code": f"{type(e).__name__}: {e}"}
 
 
+async def _dispatch(sess: "Session", msg: dict) -> None:
+    """Handle one browser command. Split out of the socket loop so a single
+    failing command (e.g. the Voisa server refusing a socket connect) is
+    reported to the UI instead of crashing the whole session handler."""
+    cmd = msg.get("cmd")
+
+    if cmd == "connect":
+        # bump generation first so stale events from the old socket are
+        # dropped by the UI
+        if msg.get("gen") is not None:
+            sess.gen = int(msg["gen"])
+        did = msg.get("deviceId")
+        # An explicit cookie lets each browser tab hold its OWN identity
+        # instead of everyone sharing the one stored account. This is
+        # what makes two isolated relays possible: tab A is one Voisa
+        # identity, tab B is another, and they never collide.
+        cookie = msg.get("cookie")
+        if cookie:
+            # the browser session remembered its own identity — use it
+            acct = {"deviceId": did or "", "cookie": cookie}
+        elif did:
+            # a remembered deviceId with no cookie: re-fetch it (does
+            # not touch the shared global store)
+            acct = voisa.register(did)
+        else:
+            # no identity at all: mint a FRESH one bound to this session,
+            # never the global voisa_account.json default. The browser
+            # persists what comes back on the `account` message, so a
+            # reload keeps the same identity instead of minting again.
+            acct = voisa.create_fresh()
+
+        # Only tear down when the identity is actually changing. A plain
+        # page load also sends `connect`; closing unconditionally killed
+        # a call that was already in progress (and a peer arriving one
+        # second later found a dead session).
+        same_identity = (sess.cookie == acct["cookie"])
+        if (sess.call or sess.sio) and not same_identity:
+            try:
+                await sess.close()
+            except Exception:
+                pass
+        elif same_identity and sess.sio:
+            # already connected as this identity — don't reconnect and
+            # don't disturb a live call
+            await sess.send("account", **acct)
+            await sess.log("already connected (identity unchanged)")
+            return
+        await sess.send("account", **acct)
+        await sess.connect(acct["cookie"])
+
+    elif cmd == "emit":
+        await sess.emit(msg.get("event"), msg.get("payload") or {})
+
+    elif cmd == "search":
+        # language is its own event; start-search takes no payload.
+        # We still need a bridge BEFORE matching starts: the browser
+        # sends its SDP/ICE through sess.call, and by the time a
+        # start-dialog arrives the offer is already in flight.
+        lang = msg.get("lang", "en")
+        if not sess.call:
+            await start_call(sess, lang, int(msg.get("seconds") or 0),
+                             False, None, False, search=False)
+        await sess.emit("set-search-language", {"searchLanguage": lang})
+        await sess.emit("start-search", {})
+
+    elif cmd == "accept":
+        # Accepting a pending dialog only makes sense if something can
+        # negotiate the media. If no BridgeCall is attached, start one in
+        # "accept-only" mode: it waits for the incoming start-dialog
+        # instead of searching, then answers/offers as appropriate.
+        mid = msg.get("matchId") or sess.match_id
+        if sess.call:
+            await sess.emit("start-dialog", {"initiate": True, "matchId": mid})
+        else:
+            await sess.log("accept: no call attached — starting one to "
+                           "handle the pending dialog")
+            await start_call(sess, msg.get("lang", "en"),
+                             int(msg.get("seconds") or 0),
+                             bool(msg.get("media", True)),
+                             msg.get("audioFile"),
+                             bool(msg.get("record", False)),
+                             search=False)
+
+    elif cmd == "hangup":
+        await sess.hangup()
+
+    elif cmd == "bufferdialog":
+        # dialog ack: match | decline | accept
+        await sess.emit("buffer-dialog",
+                        {"event": msg.get("event", "match")})
+
+    elif cmd == "shuffle":
+        # server-assigned nickname change; premium accounts only
+        ack = await sess.loop.run_in_executor(None, _shuffle, sess.cookie)
+        if isinstance(ack, dict) and ack.get("code"):
+            await sess.log(f"shuffle-username refused: {ack['code']}", "err")
+        elif ack:
+            await sess.log(f"new username: {ack}", "match")
+        else:
+            await sess.log("shuffle-username: no reply", "err")
+
+    elif cmd == "call":
+        await start_call(sess, msg.get("lang", "en"), int(msg.get("seconds") or 0),
+                         bool(msg.get("media", True)), msg.get("audioFile"),
+                         bool(msg.get("record", False)))
+
+    elif cmd == "record":
+        # toggle recording on a LIVE call (the record button)
+        want = bool(msg.get("on", True))
+        if not sess.call:
+            await sess.log("no active call to record", "err")
+        elif want:
+            ok = sess.call.start_recording()
+            await sess.send("recording", on=True, ok=bool(ok))
+            await sess.log("recording started" if ok
+                           else "already recording", "match")
+        else:
+            n = await sess.call.stop_recording()
+            await sess.send("recording", on=False, files=n)
+            await sess.log(f"recording stopped ({n} file(s))", "match")
+
+    elif cmd == "mitm":
+        # leg control for the MITM view: start/stop a leg, or hand a
+        # leg the browser's SDP/ICE
+        # accept "A"/"B" or a "leg-A"/"leg-B" element id, so a
+        # frontend slip cannot silently reject every leg message
+        leg = str(msg.get("leg") or "").upper().removeprefix("LEG-")
+        act = msg.get("act")
+        if leg not in ("A", "B"):
+            await sess.log("mitm: bad leg", "err")
+        elif act == "start":
+            await leg_start(sess, leg, msg.get("cookie"),
+                            msg.get("deviceId"), msg.get("lang", "en"),
+                            msg.get("seconds") or 0)
+        elif act == "stop":
+            await leg_stop(sess, leg)
+            await sess.send("mitm", leg=leg, what="call", phase="idle", matchId=None)
+        elif act == "signal":
+            await leg_signal(sess, leg, msg)
+        else:
+            await sess.log(f"mitm: bad act {act!r}", "err")
+
+    elif cmd == "webrtc":
+        # The BROWSER owns the peer connection, so its SDP/ICE goes
+        # straight out to the Voisa peer.
+        if not sess.call:
+            await sess.log("webrtc: no active call", "err")
+        else:
+            sess.call.ui_webrtc(msg)
+
+    elif cmd == "stopcall":
+        await sess.stop_call()
+
+    elif cmd == "logline":
+        # the UI can persist its own client-side lines to the same file
+        logfile(str(msg.get("text", "")), msg.get("level", "ui"), cid=sess.cid)
+
+    elif cmd == "ping":
+        await sess.send("pong")
+
+    else:
+        await sess.log(f"unknown cmd: {cmd}")
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):
     await websocket.accept()
@@ -819,157 +986,16 @@ async def ws(websocket: WebSocket):
     try:
         while True:
             msg = await websocket.receive_json()
-            cmd = msg.get("cmd")
-
-            if cmd == "connect":
-                # bump generation first so stale events from the old socket are
-                # dropped by the UI
-                if msg.get("gen") is not None:
-                    sess.gen = int(msg["gen"])
-                did = msg.get("deviceId")
-                # An explicit cookie lets each browser tab hold its OWN identity
-                # instead of everyone sharing the one stored account. This is
-                # what makes two isolated relays possible: tab A is one Voisa
-                # identity, tab B is another, and they never collide.
-                cookie = msg.get("cookie")
-                if cookie:
-                    acct = {"deviceId": did or "", "cookie": cookie}
-                elif did:
-                    acct = voisa.ensure_account(did)
-                else:
-                    acct = voisa.ensure_account()
-
-                # Only tear down when the identity is actually changing. A plain
-                # page load also sends `connect`; closing unconditionally killed
-                # a call that was already in progress (and a peer arriving one
-                # second later found a dead session).
-                same_identity = (sess.cookie == acct["cookie"])
-                if (sess.call or sess.sio) and not same_identity:
-                    try:
-                        await sess.close()
-                    except Exception:
-                        pass
-                elif same_identity and sess.sio:
-                    # already connected as this identity — don't reconnect and
-                    # don't disturb a live call
-                    await sess.send("account", **acct)
-                    await sess.log("already connected (identity unchanged)")
-                    continue
-                await sess.send("account", **acct)
-                await sess.connect(acct["cookie"])
-
-            elif cmd == "emit":
-                await sess.emit(msg.get("event"), msg.get("payload") or {})
-
-            elif cmd == "search":
-                # language is its own event; start-search takes no payload.
-                # We still need a bridge BEFORE matching starts: the browser
-                # sends its SDP/ICE through sess.call, and by the time a
-                # start-dialog arrives the offer is already in flight.
-                lang = msg.get("lang", "en")
-                if not sess.call:
-                    await start_call(sess, lang, int(msg.get("seconds") or 0),
-                                     False, None, False, search=False)
-                await sess.emit("set-search-language", {"searchLanguage": lang})
-                await sess.emit("start-search", {})
-
-            elif cmd == "accept":
-                # Accepting a pending dialog only makes sense if something can
-                # negotiate the media. If no BridgeCall is attached, start one in
-                # "accept-only" mode: it waits for the incoming start-dialog
-                # instead of searching, then answers/offers as appropriate.
-                mid = msg.get("matchId") or sess.match_id
-                if sess.call:
-                    await sess.emit("start-dialog", {"initiate": True, "matchId": mid})
-                else:
-                    await sess.log("accept: no call attached — starting one to "
-                                   "handle the pending dialog")
-                    await start_call(sess, msg.get("lang", "en"),
-                                     int(msg.get("seconds") or 0),
-                                     bool(msg.get("media", True)),
-                                     msg.get("audioFile"),
-                                     bool(msg.get("record", False)),
-                                     search=False)
-
-            elif cmd == "hangup":
-                await sess.hangup()
-
-            elif cmd == "bufferdialog":
-                # dialog ack: match | decline | accept
-                await sess.emit("buffer-dialog",
-                                {"event": msg.get("event", "match")})
-
-            elif cmd == "shuffle":
-                # server-assigned nickname change; premium accounts only
-                ack = await sess.loop.run_in_executor(None, _shuffle, sess.cookie)
-                if isinstance(ack, dict) and ack.get("code"):
-                    await sess.log(f"shuffle-username refused: {ack['code']}", "err")
-                elif ack:
-                    await sess.log(f"new username: {ack}", "match")
-                else:
-                    await sess.log("shuffle-username: no reply", "err")
-
-            elif cmd == "call":
-                await start_call(sess, msg.get("lang", "en"), int(msg.get("seconds") or 0),
-                                 bool(msg.get("media", True)), msg.get("audioFile"),
-                                 bool(msg.get("record", False)))
-
-            elif cmd == "record":
-                # toggle recording on a LIVE call (the record button)
-                want = bool(msg.get("on", True))
-                if not sess.call:
-                    await sess.log("no active call to record", "err")
-                elif want:
-                    ok = sess.call.start_recording()
-                    await sess.send("recording", on=True, ok=bool(ok))
-                    await sess.log("recording started" if ok
-                                   else "already recording", "match")
-                else:
-                    n = await sess.call.stop_recording()
-                    await sess.send("recording", on=False, files=n)
-                    await sess.log(f"recording stopped ({n} file(s))", "match")
-
-            elif cmd == "mitm":
-                # leg control for the MITM view: start/stop a leg, or hand a
-                # leg the browser's SDP/ICE
-                # accept "A"/"B" or a "leg-A"/"leg-B" element id, so a
-                # frontend slip cannot silently reject every leg message
-                leg = str(msg.get("leg") or "").upper().removeprefix("LEG-")
-                act = msg.get("act")
-                if leg not in ("A", "B"):
-                    await sess.log("mitm: bad leg", "err")
-                elif act == "start":
-                    await leg_start(sess, leg, msg.get("cookie"),
-                                    msg.get("deviceId"), msg.get("lang", "en"),
-                                    msg.get("seconds") or 0)
-                elif act == "stop":
-                    await leg_stop(sess, leg)
-                    await sess.send("mitm", leg=leg, what="call", phase="idle", matchId=None)
-                elif act == "signal":
-                    await leg_signal(sess, leg, msg)
-                else:
-                    await sess.log(f"mitm: bad act {act!r}", "err")
-
-            elif cmd == "webrtc":
-                # The BROWSER owns the peer connection, so its SDP/ICE goes
-                # straight out to the Voisa peer.
-                if not sess.call:
-                    await sess.log("webrtc: no active call", "err")
-                else:
-                    sess.call.ui_webrtc(msg)
-
-            elif cmd == "stopcall":
-                await sess.stop_call()
-
-            elif cmd == "logline":
-                # the UI can persist its own client-side lines to the same file
-                logfile(str(msg.get("text", "")), msg.get("level", "ui"), cid=sess.cid)
-
-            elif cmd == "ping":
-                await sess.send("pong")
-
-            else:
-                await sess.log(f"unknown cmd: {cmd}")
+            if not isinstance(msg, dict):
+                continue
+            try:
+                await _dispatch(sess, msg)
+            except (WebSocketDisconnect, asyncio.CancelledError):
+                raise
+            except Exception as e:
+                import traceback as _tb
+                logfile(f"cmd {msg.get('cmd')!r} failed: " + _tb.format_exc(), "err", cid=sess.cid)
+                await sess.log(f"{msg.get('cmd')} failed: {type(e).__name__}: {e}", "err")
     except WebSocketDisconnect:
         pass
     except Exception as e:

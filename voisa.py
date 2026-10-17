@@ -46,6 +46,7 @@ from voisa_pkg.account import (  # noqa: E402,F401
     SERVER, API, SOCK_PATH, APP_VERSION, PLATFORM, STORE,
     SERVER_EVENTS,
     create_account, load_store, save_store, new_device_id, ensure_account,
+    create_fresh, register,
     POOL, load_pool, save_pool, pool_lease, pool_add, pool_status,
     pool_remove, pool_clear, pool_set_username, pool_resolve_names,
 )

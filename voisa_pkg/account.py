@@ -77,6 +77,30 @@ def new_device_id() -> str:
     return uuid.uuid4().hex[:16]
 
 
+def create_fresh() -> dict:
+    """Mint a brand-new identity WITHOUT touching the shared global store.
+
+    This is what makes identity *per session*: every browser session that has
+    no identity of its own gets a freshly minted deviceId+cookie here, instead
+    of everyone falling back onto the single global ``voisa_account.json``. The
+    caller (the web session, or the browser via localStorage) is responsible
+    for remembering it.
+    """
+    did = new_device_id()
+    acct = create_account(did)
+    return {"deviceId": did, "cookie": acct["cookie"], "created": time.time()}
+
+
+def register(device_id: str) -> dict:
+    """Idempotently fetch the cookie for a specific deviceId.
+
+    Does not write the global store — used when a browser session supplies its
+    own remembered deviceId.
+    """
+    acct = create_account(device_id)
+    return {"deviceId": device_id, "cookie": acct["cookie"]}
+
+
 def ensure_account(device_id: str | None = None, force_new: bool = False) -> dict:
     st = load_store()
     if force_new:

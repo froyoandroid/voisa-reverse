@@ -73,7 +73,6 @@ class VoisaCall:
         # addresses the peer advertised, for the ICE-level check
         self.peer_addrs = set()
         self.on_peer_addr = None     # callable(addr): a peer address arrived
-        self.on_loopback = None      # callable(peer_name): we met our own leg
         self.on_loopback = None      # callable(peer_name) -> handled?
         self.recorders = []
         os.makedirs(outdir, exist_ok=True)

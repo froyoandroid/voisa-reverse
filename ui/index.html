@@ -15,6 +15,8 @@
     <button class="nav" data-view="mitm"><span class="nav-icon">⇄</span><span>Relay</span></button>
     <button class="nav" data-view="logs"><span class="nav-icon">☰</span><span>Logs</span></button>
     <button class="nav" data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+    <div class="spacer"></div>
+    <div class="foot">Per-session identity · localhost relay</div>
   </nav>
   <div class="content">
     <main>
@@ -38,7 +40,7 @@
         <section class="panel leg" id="leg-B"><h2>Leg B <span class="small">Peer side B</span><span class="pill" data-role="state">Idle</span></h2><div class="kv leginfo"></div><div class="hint who">Independent identity.</div><label class="sel langsel"><span>Language</span><select data-role="lang" data-leg="B"><option value="en">English</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="id">Indonesian</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option></select></label><audio id="legB-audio" class="legaudio" autoplay playsinline></audio><div class="meter"><i></i></div><div class="row"><button data-act="search">Search</button><button data-act="stop">Stop</button><button data-act="newid" title="Lease a different identity">New identity</button></div></section>
       </div>
       <section class="panel poolpanel"><h2>Identity pool <span class="hint" id="poolHint">Least recently used first</span></h2><div class="row"><button id="btnPoolAdd">+ Add</button><label class="num">Count <input type="number" id="poolCount" value="4" min="1" max="20"></label><button id="btnPoolRefresh" class="quiet">Refresh</button><button id="btnPoolClear" class="quiet">Clear all</button><span class="hint" id="poolSummary">—</span></div><div id="poolList" class="poollist"></div></section>
-      <section class="panel recpanel"><h2>Relay recordings <button id="btnRecRefreshMitm" class="mini">Refresh</button></h2><div class="hint">Stored in this browser — never uploaded.</div><div id="recList" class="reclist"></div></section>
+      <section class="panel recpanel"><h2>Relay recordings <button id="btnRecRefreshMitm" class="mini">Refresh</button></h2><div class="hint">Saved on the server, verified playable on stop.</div><div id="recList" class="reclist"></div></section>
     </div>
     <div id="view-logs" class="view" hidden>
       <section class="panel logpanel"><h2>Activity <span><button id="btnClear" class="mini">Clear</button> <a class="mini" id="lnkLog" href="/api/log/download" download>Download</a></span></h2><div id="log" class="log logfull"></div></section>

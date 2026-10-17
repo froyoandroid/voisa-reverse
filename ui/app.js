@@ -11,9 +11,33 @@ const SERVER_EVENTS = [
 
 let ws = null;
 let currentMatchId = null;
-// This tab's Voisa identity. Each tab holds its own so several relays can run
-// side by side without sharing (and fighting over) one account.
-let tabCookie = null;
+// This browser's Voisa identity. Each session holds its OWN, persisted here,
+// so several tabs/relays never share (and fight over) one account, and so a
+// reload keeps the same identity instead of grabbing a shared global one.
+//
+// This is the fix for "identity exists globally": the server no longer hands
+// back a shared voisa_account.json default — the browser remembers its own
+// identity and supplies it on every connect.
+const ID_KEY = "voisa:identity";
+
+function loadIdentity() {
+  try {
+    const j = JSON.parse(localStorage.getItem(ID_KEY) || "null");
+    return j && j.cookie ? j : null;
+  } catch (_) { return null; }
+}
+
+function saveIdentity(id) {
+  tabIdentity = id && id.cookie ? { deviceId: id.deviceId || "", cookie: id.cookie } : null;
+  tabCookie = tabIdentity ? tabIdentity.cookie : null;
+  try {
+    if (tabIdentity) localStorage.setItem(ID_KEY, JSON.stringify(tabIdentity));
+    else localStorage.removeItem(ID_KEY);
+  } catch (_) {}
+}
+
+let tabIdentity = loadIdentity();
+let tabCookie = tabIdentity ? tabIdentity.cookie : null;
 // short label shown in the header, so two open tabs are told apart at a glance
 let tabLabel = "";
 let myGen = 0;          // bumped on every (re)connect; stale messages are dropped
@@ -238,7 +262,11 @@ function connectWS() {
     wsFails = 0;
     setConn("on", CallState.mode === "idle" ? "Ready" : "Connected");
     myGen++;
-    send({ cmd: "connect", gen: myGen }); // auto-connect with stored/random account
+    // reconnect with THIS session's own remembered identity (if any); when
+    // there is none the server mints a fresh one and we persist it below.
+    send({ cmd: "connect", gen: myGen,
+           deviceId: tabIdentity ? tabIdentity.deviceId : null,
+           cookie: tabCookie || null });
   };
   ws.onclose = () => {
     setConn("off", "Connecting…");
@@ -317,6 +345,9 @@ function handle(m) {
       acct.deviceId = m.deviceId;
       acct.cookie = m.cookie;
       acct.username = null;
+      // persist this session's identity so a reload reuses it instead of
+      // minting a new one (or grabbing a shared global account)
+      if (m.cookie) saveIdentity({ deviceId: m.deviceId, cookie: m.cookie });
       renderAcct();
       logLine("Identity ready.", "sys");
       break;
@@ -583,10 +614,11 @@ $("btnNew").onclick = async () => {
     acct.cookie = j.cookie;
     acct.username = null;
     acct.premium = false;
+    saveIdentity({ deviceId: j.deviceId, cookie: j.cookie });
     renderAcct();
     logLine(`New identity: ${j.deviceId}`, "match");
     myGen++;
-    send({ cmd: "connect", deviceId: j.deviceId, gen: myGen });
+    send({ cmd: "connect", deviceId: j.deviceId, cookie: j.cookie, gen: myGen });
     setConn("off", "Connecting…");
   } catch (e) {
     logLine(`Could not create identity: ${e.message}`, "err");
@@ -614,7 +646,7 @@ async function renderSaved() {
           const j = await (await fetch("/api/saved/use", { method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ deviceId: b.dataset.use }) })).json();
-          tabCookie = j.cookie;
+          saveIdentity({ deviceId: j.deviceId, cookie: j.cookie });
           acct.deviceId = j.deviceId; acct.cookie = j.cookie; acct.username = j.username || null;
           acct.premium = false;
           $("deviceId").value = j.deviceId;
@@ -656,7 +688,7 @@ $("btnLogin").onclick = async () => {
     });
     const j = await r.json();
     if (!j || !j.cookie) return logLine("Could not use that ID.", "err");
-    tabCookie = j.cookie;
+    saveIdentity({ deviceId: j.deviceId, cookie: j.cookie });
     logLine("Identity ready.", "sys");
     myGen++;
     send({ cmd: "connect", deviceId: j.deviceId, cookie: j.cookie, gen: myGen });
@@ -717,11 +749,13 @@ function safeLoad(fn) {
   try { const r = fn(); if (r && r.catch) r.catch(() => {}); } catch (_) {}
 }
 async function loadRecs() {
+  // hoisted so the catch can reach them — declaring these inside the try made
+  // the catch throw a ReferenceError (box/info undefined) on any fetch failure
+  const box = $("recs");
+  const info = $("recInfo");
   try {
     const r = await fetch("/api/recordings");
     const j = await r.json();
-    const box = $("recs");
-    const info = $("recInfo");
     if (info) {
       info.textContent = j.files.length
         ? `${j.files.length} file(s), ${(j.total_bytes / 1048576).toFixed(1)} MB`
@@ -748,7 +782,7 @@ async function loadRecs() {
     });
   } catch (e) {
     if (info) info.textContent = "Unavailable.";
-    box.innerHTML = '<div class="empty">Unavailable.</div>';
+    if (box) box.innerHTML = '<div class="empty">Unavailable.</div>';
   }
 }
 $("btnRecRefresh").onclick = loadRecs;
