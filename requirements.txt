@@ -1,0 +1,21 @@
+# Direct dependencies of the standalone client and web UI.
+# Versions are what the current deployment runs; see docs/14-deployment.md.
+#
+#   python -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+
+# web UI
+fastapi==0.143.0
+uvicorn==0.54.0
+# required by request.form(); without it POST /login asserts and returns 500
+python-multipart==0.0.32
+
+# protocol client
+requests==2.34.2
+python-socketio==5.17.0
+
+# WebRTC — server-peer path only. With browser_peer=True (what webui.py uses)
+# the browser owns the peer connection and none of these decode audio.
+aiortc==1.15.0
+av==17.1.0
+numpy==2.5.4
