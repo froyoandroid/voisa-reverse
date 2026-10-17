@@ -79,7 +79,6 @@ async function legArm(leg) {
   leg._offering = false;
   legState(leg, "idle", "Ready");
   legInfo(leg);
-  poolRefresh();
   logLine(`Leg ${leg.key}: ${j.deviceId}`, "match");
 }
 

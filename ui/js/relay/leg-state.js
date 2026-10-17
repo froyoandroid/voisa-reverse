@@ -221,7 +221,6 @@ document.querySelectorAll(".leg").forEach((sec) => {
     b.onclick = () => {
       const secs = 0;
       if (b.dataset.act === "search") legStart(leg, legLang(leg), secs);
-      else if (b.dataset.act === "newid") legNewIdentity(leg);
       else legStop(leg);
     };
   });

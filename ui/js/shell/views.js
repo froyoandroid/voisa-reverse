@@ -14,7 +14,7 @@ function showView(name) {
 document.querySelectorAll(".nav[data-view]").forEach((b) => {
   b.onclick = () => {
     showView(b.dataset.view);
-    if (b.dataset.view === "mitm") { poolRefresh(); recListRefresh(); }
+    if (b.dataset.view === "mitm") { recListRefresh(); }
     if (b.dataset.view === "logs") logToBottom();
     const tt = $("topbarTitle");
     if (tt) tt.textContent = b.dataset.label || b.textContent.trim();
