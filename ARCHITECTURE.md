@@ -12,6 +12,7 @@ internal/
                       handshake, ping/pong, events, acks, reconnect
   account/            createAccount, device ids, fresh/register identities
   store/              voisa_pool.json (LRU lease) and voisa_saved.json
+  users/              anonymous owners: voisa_uid cookie -> users/<id>/
   logs/               voisa.log writer, trimmed to 24 h
   server/
     http.go           routes, static files, index cache-busting, /ws handler
@@ -41,9 +42,20 @@ go build -o bin/voisa ./cmd/voisa
 bin/voisa --host 127.0.0.1 --port 8765 --root .
 ```
 
-`--root` holds `ui/` and the data files: `voisa_pool.json`,
-`voisa_saved.json` (live cookies, gitignored), `voisa.log`, `media/`.
+`--root` holds `ui/`, the server log `voisa.log`, and `users/` (gitignored).
 systemd runs it as `voisa.service` behind nginx.
+
+## Users
+
+There is no login. Each browser gets an anonymous HttpOnly cookie,
+`voisa_uid`, and its own `users/<id>/`: `voisa_pool.json`,
+`voisa_saved.json` (live Voisa cookies), `voisa.log` (what the Logs view
+shows) and `media/`. One owner never sees another's data, even on the same
+network. Inside an owner, each tab still has its own Voisa identity
+(sessionStorage), and no identity is ever live in two sessions server-wide.
+
+Old single-user data in the root is adopted once via `/?claim=<token>`, with
+the token in `users/CLAIM_TOKEN`.
 
 ## Conventions
 
@@ -57,3 +69,5 @@ systemd runs it as `voisa.service` behind nginx.
 - Identity is per browser tab and never shared between live sessions
   (`cookiesInUse`).
 - Never hold a session or leg mutex across network I/O.
+- Per-user data goes through `users.For(w, r)` (or `Session.user`), never a
+  package global.
