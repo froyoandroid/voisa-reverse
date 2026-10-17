@@ -1,11 +1,14 @@
-"""Voisa client, split by concern.
+"""Voisa client library, one subpackage per subsystem.
 
-    account  — identity, cookies, the REST account API
-    audio    — LivePlayer (speaker out) and SafeRecorder (wav out)
-    media    — synthetic outgoing tracks (speech-like audio, test pattern)
-    webrtc   — ICE helpers shared by the call classes
-    call     — VoisaCall / BridgeCall (matchmaking + negotiation)
+    protocol   server endpoints, client version, wire event names
+    paths      where data files live (project root)
+    identity/  account (mint / re-register), saved shelf, relay pool
+    client     blocking socket helpers for one-shot actions and the CLI
+    call/      VoisaCall (standalone CLI) and BridgeCall (server relay legs)
+    media/     live player, recorder, synthetic outgoing tracks
+    webrtc     ICE helpers
+    cli/       command-line entry points behind voisa.py and voisa_call.py
 
-The originals (voisa.py, voisa_call.py, webui.py) remain as the entry points.
+voisa.py, voisa_call.py and webui.py at the root are thin entry points and
+compatibility facades. account.py and audio.py here are compatibility shims.
 """
-__all__ = ["account", "audio", "media", "webrtc"]
