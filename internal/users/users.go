@@ -1,8 +1,8 @@
 // Package users gives every browser its own private space on the server,
 // with no login: an anonymous, random owner id in an HttpOnly cookie.
 //
-// Each owner gets their own directory, users/<id>/, holding their identity
-// pool, saved identities, activity log and legacy recordings. Nothing in
+// Each owner gets their own directory, users/<id>/, holding their Call
+// identity, saved identities, activity log and legacy recordings. Nothing in
 // one owner's directory is ever served to another. Two people on the same
 // network, or one person in two different browsers, are different owners.
 //
@@ -41,7 +41,6 @@ var idRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 type User struct {
 	ID    string
 	Dir   string
-	Pool  *store.Pool
 	Saved *store.Saved
 }
 
@@ -113,7 +112,14 @@ func get(id string) *User {
 	// The directory is created on first write (store, log, claim), so a
 	// visitor who never saves anything leaves nothing behind.
 	dir := filepath.Join(base, id)
-	u := &User{ID: id, Dir: dir, Pool: store.NewPool(dir), Saved: store.NewSaved(dir)}
+	u := &User{ID: id, Dir: dir, Saved: store.NewSaved(dir)}
+	// The identity pool was removed: identities it held move to the saved
+	// shelf, so none is lost.
+	if pf := filepath.Join(dir, "voisa_pool.json"); fileExists(pf) {
+		if merge(pf, filepath.Join(dir, "voisa_saved.json")) == nil {
+			_ = os.Remove(pf)
+		}
+	}
 	cache[id] = u
 	return u
 }
@@ -164,7 +170,8 @@ func Claim(u *User, token string) bool {
 		if _, err := os.Stat(src); err != nil {
 			continue
 		}
-		if err := merge(src, filepath.Join(u.Dir, f)); err == nil {
+		// both old files land on the saved shelf (there is no pool any more)
+		if err := merge(src, filepath.Join(u.Dir, "voisa_saved.json")); err == nil {
 			_ = os.Remove(src)
 		}
 	}
@@ -280,4 +287,9 @@ func (u *User) SetIdentity(c CallIdentity) error {
 		return err
 	}
 	return os.Rename(tmp, u.identityPath())
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
