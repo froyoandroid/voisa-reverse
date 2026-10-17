@@ -72,6 +72,7 @@ async function legArm(leg) {
   leg.username = null;
   leg.peer = null;
   leg.matchId = null;
+  leg.peer = null;
   leg._offeredFor = null;
   leg._answering = false;
   leg._answeredFor = null;
@@ -129,6 +130,7 @@ function legEnsureBridged(leg) {
 }
 
 function legTeardown(leg) {
+  legWatchClear(leg);
   legClearBus(leg);
   recUnfeed(leg);
   leg.peerStream = null;

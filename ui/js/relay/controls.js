@@ -11,7 +11,7 @@ $("btnMitmBridge")?.addEventListener("click", () => {
   const btn = $("btnMitmBridge");
   btn.classList.toggle("on", bridgeOn);
   btn.setAttribute("aria-pressed", String(bridgeOn));
-  if ($("bridgeCap")) $("bridgeCap").textContent = bridgeOn ? "Bridge on" : "Bridge muted";
+  bridgePaint();
   for (const leg of [LEGS.A, LEGS.B]) {
     if (leg.gain) leg.gain.gain.value = bridgeOn ? 1.0 : 0.0;
   }
