@@ -1,13 +1,19 @@
 "use strict";
 // Record toggle and Talk (mic) control.
 
-// record button (live toggle)
+// record button (live toggle). While recording it shows the elapsed time,
+// ticking every second (data-since, recordings/upload.js).
 let recOn = false;
-function setRecUI(on) {
+function setRecUI(on, since) {
   recOn = on;
   const b = $("btnRecord");
   if (!b) return;
-  b.textContent = on ? "Stop recording" : "Record";
+  const t = since || (CALLREC.rec && CALLREC.rec.t0) || 0;
+  if (on && t) {
+    b.innerHTML = `<span class="rec-dot" aria-hidden="true"></span>Stop <b class="rec-clock" data-since="${t}">${fmtDur(Date.now() - t)}</b>`;
+  } else {
+    b.textContent = on ? "Stop recording" : "Record";
+  }
   b.classList.toggle("on", on);
 }
 $("btnRecord").onclick = () => send({ cmd: "record", on: !recOn });
@@ -56,13 +62,3 @@ $("btnBufferDialog") && ($("btnBufferDialog").onclick = () => {
   send({ cmd: "bufferdialog", event: ev });
   logLine(`Response: ${ev}`, "sys");
 });
-
-$("btnEmit").onclick = () => {
-  let payload = {};
-  const raw = $("payload").value.trim();
-  if (raw) {
-    try { payload = JSON.parse(raw); }
-    catch { return logLine("Event data must be valid JSON.", "err"); }
-  }
-  send({ cmd: "emit", event: $("evt").value, payload });
-};
