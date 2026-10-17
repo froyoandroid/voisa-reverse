@@ -20,6 +20,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"voisa/internal/account"
 	"voisa/internal/logs"
 	"voisa/internal/protocol"
 	"voisa/internal/sio"
@@ -50,6 +51,7 @@ func New(projectRoot string) http.Handler {
 		writeJSON(w, 200, M{"has_account": false, "per_session": true})
 	})
 	mux.HandleFunc("POST /api/new", apiNew)
+	mux.HandleFunc("POST /api/relay/fresh", apiRelayFresh)
 	mux.HandleFunc("GET /api/pool", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, M{"entries": users.For(w, r).Pool.Status()})
 	})
@@ -192,7 +194,23 @@ func apiNew(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, M{"detail": err.Error()})
 		return
 	}
-	writeJSON(w, 200, M{"deviceId": e["deviceId"], "cookie": e["cookie"]})
+	// the user asked for it: it becomes this browser's identity for 24 hours
+	did, _ := e["deviceId"].(string)
+	cookie, _ := e["cookie"].(string)
+	c := users.CallIdentity{DeviceID: did, Cookie: cookie, Since: account.Now()}
+	_ = u.SetIdentity(c)
+	writeJSON(w, 200, M{"deviceId": c.DeviceID, "cookie": c.Cookie, "since": c.Since})
+}
+
+// apiRelayFresh mints a brand-new identity for a relay leg (user rule: relay
+// legs never reuse pool identities).
+func apiRelayFresh(w http.ResponseWriter, r *http.Request) {
+	id, err := identityCall(account.Fresh)
+	if err != nil {
+		writeJSON(w, 500, M{"detail": err.Error()})
+		return
+	}
+	writeJSON(w, 200, M{"deviceId": id.DeviceID, "cookie": id.Cookie})
 }
 
 func apiPoolAdd(w http.ResponseWriter, r *http.Request) {
