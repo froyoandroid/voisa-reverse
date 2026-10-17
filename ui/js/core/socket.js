@@ -14,11 +14,13 @@ function connectWS() {
     wsFails = 0;
     setConn("on", CallState.mode === "idle" ? "Ready" : "Connected");
     myGen++;
-    // reconnect with THIS session's own remembered identity (if any); when
-    // there is none the server mints a fresh one and we persist it below.
-    send({ cmd: "connect", gen: myGen,
+    // lazy: only tell the server which identity this tab remembers. Nothing
+    // is created or connected until the first Start/search; then the server
+    // uses this tab's identity, else the browser's (kept 24 h), else a new one.
+    send({ cmd: "connect", gen: myGen, lazy: true,
            deviceId: tabIdentity ? tabIdentity.deviceId : null,
-           cookie: tabCookie || null });
+           cookie: tabCookie || null,
+           since: tabIdentity ? tabIdentity.since : null });
   };
   ws.onclose = () => {
     setConn("off", "Connecting…");

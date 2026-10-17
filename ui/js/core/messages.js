@@ -56,7 +56,7 @@ function handle(m) {
       acct.username = null;
       // persist this session's identity so a reload reuses it instead of
       // minting a new one (or grabbing a shared global account)
-      if (m.cookie) saveIdentity({ deviceId: m.deviceId, cookie: m.cookie });
+      if (m.cookie) saveIdentity({ deviceId: m.deviceId, cookie: m.cookie, since: m.since });
       renderAcct();
       logLine("Identity ready.", "sys");
       break;

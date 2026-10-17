@@ -34,8 +34,11 @@ function loadIdentity() {
   } catch (_) { return null; }
 }
 
+// since: when this identity was taken (Unix s). Identities last 24 hours;
+// the server decides, the tab just remembers and reports it.
 function saveIdentity(id) {
-  tabIdentity = id && id.cookie ? { deviceId: id.deviceId || "", cookie: id.cookie } : null;
+  tabIdentity = id && id.cookie
+    ? { deviceId: id.deviceId || "", cookie: id.cookie, since: id.since || null } : null;
   tabCookie = tabIdentity ? tabIdentity.cookie : null;
   try {
     if (tabIdentity) sessionStorage.setItem(ID_KEY, JSON.stringify(tabIdentity));
