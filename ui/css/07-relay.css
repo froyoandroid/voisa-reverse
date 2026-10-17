@@ -15,7 +15,6 @@
 .pill[data-state=error], .pill[data-state=ended] { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
 
 .leginfo { margin-bottom: 0; }
-.hint.who { margin: -4px 0 0; font-size: 11px; }
 .langsel select { flex: 1; }
 .legaudio { width: 100%; height: 34px; }
 
