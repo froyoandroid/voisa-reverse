@@ -146,7 +146,7 @@ async def state():
 
 
 @app.post("/api/new")
-async def api_new():
+def api_new():
     # Lease an identity from the pool rather than always minting a fresh one.
     #
     # A brand-new account created seconds before a call is the anomaly: no
@@ -333,18 +333,18 @@ async def api_rec_del(name: str):
 
 
 @app.get("/api/pool")
-async def api_pool():
+def api_pool():
     """Identifier pool: aged identities reused across calls."""
     return {"entries": voisa.pool_status()}
 
 
 @app.get("/api/saved")
-async def api_saved_list():
+def api_saved_list():
     return {"entries": saved_status()}
 
 
 @app.post("/api/saved")
-async def api_saved_add(body: dict = None):
+def api_saved_add(body: dict = None):
     b = body or {}
     did, cookie = str(b.get("deviceId", "")), str(b.get("cookie", ""))
     if not did or not cookie:
@@ -355,7 +355,7 @@ async def api_saved_add(body: dict = None):
 
 
 @app.post("/api/saved/use")
-async def api_saved_use(body: dict = None):
+def api_saved_use(body: dict = None):
     did = str((body or {}).get("deviceId", ""))
     e = saved_take(did)
     if not e:
@@ -365,12 +365,12 @@ async def api_saved_use(body: dict = None):
 
 
 @app.delete("/api/saved/{device_id}")
-async def api_saved_del(device_id: str):
+def api_saved_del(device_id: str):
     return {"removed": saved_remove(device_id)}
 
 
 @app.post("/api/pool/add")
-async def api_pool_add(body: dict = None):
+def api_pool_add(body: dict = None):
     n = int((body or {}).get("n", 1))
     n = max(1, min(n, 20))
     made = voisa.pool_add(n, log=lambda m: logfile(m, "pool"))
@@ -378,7 +378,7 @@ async def api_pool_add(body: dict = None):
 
 
 @app.delete("/api/pool/{device_id}")
-async def api_pool_remove(device_id: str):
+def api_pool_remove(device_id: str):
     ok = voisa.pool_remove(device_id, log=lambda m: logfile(m, "pool"))
     if not ok:
         raise HTTPException(404, "no such identity")
@@ -386,7 +386,7 @@ async def api_pool_remove(device_id: str):
 
 
 @app.post("/api/pool/clear")
-async def api_pool_clear():
+def api_pool_clear():
     n = voisa.pool_clear(log=lambda m: logfile(m, "pool"))
     return {"cleared": n}
 
@@ -500,7 +500,7 @@ async def recordings_clear():
 
 
 @app.post("/api/login")
-async def api_login(body: dict):
+def api_login(body: dict):
     did = (body or {}).get("deviceId")
     if not did:
         raise HTTPException(400, "deviceId required")
@@ -538,158 +538,253 @@ def _cookies_in_use(exclude: "Session | None" = None) -> set:
 
 
 class Session:
-    """One browser tab <-> one Voisa socket connection."""
+    """One browser tab <-> one upstream Voisa socket.
+
+    The browser is the WebRTC peer, so this process is only a signalling relay:
+    a single asyncio socket.io client per tab carries matchmaking events and the
+    SDP/ICE between the browser and the Voisa server. There is deliberately no
+    second socket per call: two sockets on one identity raced each other for
+    start-dialog and could drop the browser's offer and candidates.
+    """
+
+    CONNECT_ATTEMPTS = 4
 
     def __init__(self, ws: WebSocket):
         self.ws = ws
-        self.sio = None
+        self.sio = None            # socketio.AsyncClient
         self.cookie = None
         self.match_id = None
+        self._accepted = None      # matchId we already accepted
         self.gen = 0               # client session generation, echoed on every msg
         self.cid = uuid.uuid4().hex[:4]   # short id so parallel tabs are separable
-        self._ice_counts = {}      # candidate type -> count, for log summarising
+        self._ice_counts = {}
         self._ice_total = 0
         self._ice_last = 0.0
+        self.ice_servers = []
         self.loop = asyncio.get_event_loop()
-        self.call = None          # voisa_call.VoisaCall when a call is active
-        # MITM relays. Each leg is its OWN BridgeCall with its OWN cookie, so
-        # two legs never share an account or a match. Kept separate from
-        # self.call so the client view and the MITM view cannot disturb
-        # each other.
-        self.legs = {}            # "A"/"B" -> BridgeCall
-        self.detached = False     # browser ws gone but the call may still run
+        self.call = None           # server-side aiortc call (legacy `call` cmd only)
+        # MITM relays: each leg is its OWN BridgeCall with its OWN identity
+        self.legs = {}             # "A"/"B" -> BridgeCall
+        self.detached = False
+        self._send_lock = asyncio.Lock()
 
     async def send(self, kind: str, **kw):
         if self.detached:
             return
         try:
-            await self.ws.send_json({"kind": kind, "t": time.time(),
-                                     "gen": self.gen, **kw})
+            async with self._send_lock:
+                await self.ws.send_json({"kind": kind, "t": time.time(),
+                                         "gen": self.gen, **kw})
         except Exception:
             pass
-
 
     async def log(self, msg: str, level: str = "sys"):
         logfile(msg, level, cid=self.cid)   # persist to voisa.log
         await self.send("log", text=str(msg), level=level)
 
-    # new socket.io client     # noqa: E301
-    def make_client(self):
+    # upstream socket
+    def _make_client(self):
         import socketio
-        sio = socketio.Client(reconnection=True, request_timeout=30)
-
-        def _schedule(coro):
-            self.loop.call_soon_threadsafe(asyncio.ensure_future, coro)
+        sio = socketio.AsyncClient(reconnection=True, reconnection_delay=1,
+                                   reconnection_delay_max=8, request_timeout=20)
 
         @sio.event
-        def connect():
-            _schedule(self.send("status", state="connected", sid=sio.sid))
+        async def connect():
+            await self.send("status", state="connected", sid=sio.sid)
 
         @sio.event
-        def disconnect(reason=None):
-            _schedule(self.send("status", state="disconnected", reason=str(reason)))
+        async def disconnect(reason=None):
+            # the peer connection cannot survive a lost signalling channel
+            await self._drop_match("socket lost")
+            await self.send("status", state="disconnected", reason=str(reason))
 
-        def mk(ev):
-            def h(*a):
-                _schedule(self._on_event(ev, a[0] if a else None))
+        def handler(ev):
+            async def h(*a):
+                try:
+                    await self._on_event(ev, a[0] if a else None)
+                except Exception as e:
+                    logfile(f"[{ev}] handler: {type(e).__name__}: {e}", "err", cid=self.cid)
             return h
 
         for ev in voisa.SERVER_EVENTS:
-            sio.on(ev, mk(ev))
+            sio.on(ev, handler(ev))
         return sio
 
+    async def connect(self, cookie: str):
+        await self.disconnect()
+        self.cookie = cookie
+        q = (f"?cookie={cookie}&version={voisa.APP_VERSION}&platform={voisa.PLATFORM}"
+             f"&rawLanguage=en-GB&language=en&currentTheme=system")
+        await self.send("status", state="connecting")
+        last = None
+        for attempt in range(1, self.CONNECT_ATTEMPTS + 1):
+            sio = self._make_client()
+            try:
+                await sio.connect(voisa.SERVER + "/" + q, transports=["websocket"],
+                                  socketio_path=voisa.SOCK_PATH, wait_timeout=15)
+                self.sio = sio
+                await self.log("connected")
+                return
+            except Exception as e:
+                last = e
+                try:
+                    await sio.disconnect()
+                except Exception:
+                    pass
+                if self.cookie != cookie or self.detached:
+                    return          # superseded while we were retrying
+                await self.log(f"connect attempt {attempt} failed: "
+                               f"{type(e).__name__}: {e}", "warn")
+                await asyncio.sleep(min(1.5 * attempt, 5))
+        await self.send("status", state="offline")
+        raise ConnectionError(f"Voisa unreachable after {self.CONNECT_ATTEMPTS} attempts: {last}")
 
+    async def disconnect(self):
+        sio, self.sio = self.sio, None
+        await self._drop_match(None)
+        if sio:
+            try:
+                await sio.disconnect()
+            except Exception:
+                pass
+
+    async def emit(self, event: str, payload: dict, quiet: bool = False):
+        if not self.sio or not self.sio.connected:
+            await self.log(f"{event}: not connected", "err")
+            return False
+        await self.sio.emit(event, payload or {})
+        if not quiet:
+            await self.send("sent", event=event, payload=payload)
+        return True
+
+    # upstream events
     async def _on_event(self, ev, payload):
-        if ev == "fetch-initial-data" and isinstance(payload, dict):
-            self.ice_servers = payload.get("iceServers", [])
+        d = payload if isinstance(payload, dict) else {}
+
+        if ev == "fetch-initial-data":
+            self.ice_servers = d.get("iceServers", [])
             await self.send("event", event=ev, payload=payload)
-            await self.send("session", user=payload.get("userData", {}),
-                            searchLanguages=payload.get("searchLanguages", {}),
-                            banStatus=payload.get("banStatus"),
-                            # the browser is the WebRTC peer, so it needs these
-                            iceServers=payload.get("iceServers", []))
+            await self.send("session", user=d.get("userData", {}),
+                            searchLanguages=d.get("searchLanguages", {}),
+                            banStatus=d.get("banStatus"),
+                            iceServers=self.ice_servers)
             return
-        if ev == "start-dialog" and isinstance(payload, dict):
-            self.match_id = payload.get("matchId")
+
+        if ev == "start-dialog":
+            mid = d.get("matchId")
+            self.match_id = mid
+            self._ice_counts, self._ice_total, self._ice_last = {}, 0, 0.0
+            await self.send("event", event=ev, payload=payload)
+            await self._accept(mid)
+            await self.send("call", phase="matched", matchId=mid,
+                            peer=d.get("username"), avatar=d.get("avatar"),
+                            initiate=bool(d.get("initiate")))
+            # the browser builds the SDP; tell it whether it offers
+            await self.send("call", phase="negotiate", matchId=mid,
+                            offer=bool(d.get("initiate")))
+            return
+
         if ev == "close-dialog":
-            # ignore a close for a match we are not in (stale replay). Compare
-            # unconditionally: requiring self.match_id to be set made this fail
-            # open right after start-search, which is when the replay arrives.
-            closed = (payload or {}).get("matchId") if isinstance(payload, dict) else None
-            if closed != self.match_id:
+            # ignore a close for a match we are not in (a stale replay right
+            # after start-search is common)
+            if d.get("matchId") != self.match_id:
                 return
             self.match_id = None
+            self._accepted = None
+            await self.send("event", event=ev, payload=payload)
+            await self.send("call", phase="closed", matchId=None)
+            return
 
-        # `webrtc` now carries SDP and ICE that the BROWSER must handle: it owns
-        # the peer connection, so these go through untouched. Only the log gets
-        # a summary, to keep 20+ candidates per dialog from burying the feed.
-        if ev == "webrtc" and isinstance(payload, dict) and payload.get("iceCandidate"):
-            cand = payload["iceCandidate"].get("candidate", "")
-            typ = next((t for t in ("relay", "srflx", "prflx", "host")
-                        if f"typ {t}" in cand), "?")
-            self._ice_counts[typ] = self._ice_counts.get(typ, 0) + 1
-            self._ice_total += 1
-            now = time.time()
-            if now - self._ice_last >= 5.0:
-                self._ice_last = now
-                summ = " ".join(f"{k}={v}" for k, v in sorted(self._ice_counts.items()))
-                await self.send("log", level="sys",
-                                text=f"[ice] peer candidates: {self._ice_total} ({summ})")
-
-        # pass SDP and ICE to the browser verbatim; it is the WebRTC peer now
         if ev == "webrtc":
+            if d.get("matchId") and self.match_id and d["matchId"] != self.match_id:
+                return              # signalling for a match we already left
+            if d.get("iceCandidate"):
+                self._count_ice(d["iceCandidate"].get("candidate", ""))
+                if time.time() - self._ice_last >= 5.0:
+                    self._ice_last = time.time()
+                    summ = " ".join(f"{k}={v}" for k, v in sorted(self._ice_counts.items()))
+                    await self.send("log", level="sys",
+                                    text=f"[ice] peer candidates: {self._ice_total} ({summ})")
             await self.send("webrtc", payload=payload, matchId=self.match_id)
             return
 
         await self.send("event", event=ev, payload=payload)
 
-    async def connect(self, cookie: str):
-        self.cookie = cookie
-        self.sio = self.make_client()
-        q = (f"?cookie={cookie}&version={voisa.APP_VERSION}&platform={voisa.PLATFORM}"
-             f"&rawLanguage=en-GB&language=en&currentTheme=system")
-        # socket.io blocks; run in a thread
-        await self.loop.run_in_executor(None, lambda: self.sio.connect(
-            voisa.SERVER + "/" + q, transports=["websocket", "polling"],
-            wait_timeout=20, socketio_path=voisa.SOCK_PATH))
-        # no account identifier here: this line is streamed to the browser and
-        # persisted in its log history, and the cookie prefix is the account's
-        # public handle
-        await self.log("connected")
+    def _count_ice(self, cand: str):
+        typ = next((t for t in ("relay", "srflx", "prflx", "host") if f"typ {t}" in cand), "?")
+        self._ice_counts[typ] = self._ice_counts.get(typ, 0) + 1
+        self._ice_total += 1
 
-    async def emit(self, event: str, payload: dict):
-        if not self.sio:
-            await self.log("not connected")
+    async def _accept(self, mid):
+        """Accept a dialog exactly once (the browser also asks, after its
+        start-dialog event; a second accept is noise the server can misread)."""
+        if not mid or self._accepted == mid:
             return
-        await self.loop.run_in_executor(None, lambda: self.sio.emit(event, payload or {}))
-        await self.send("sent", event=event, payload=payload)
+        self._accepted = mid
+        await self.emit("start-dialog", {"initiate": True, "matchId": mid})
+
+    # call control
+    async def search(self, lang: str):
+        await self._drop_match(None)
+        if not await self.emit("set-search-language", {"searchLanguage": lang}):
+            await self.send("call", phase="idle", matchId=None)
+            return
+        await self.emit("start-search", {})
+        await self.send("call", phase="searching", matchId=None)
+
+    async def browser_webrtc(self, msg: dict):
+        """SDP/ICE from the browser -> the peer, tagged with the live match."""
+        if not self.match_id:
+            return                  # call already over; late candidate
+        out = {"matchId": self.match_id}
+        for k in ("offer", "answer", "iceCandidate"):
+            if k in msg:
+                out[k] = msg[k]
+                break
+        else:
+            return
+        await self.emit("webrtc", out, quiet=True)
+
+    async def _drop_match(self, why):
+        """Leave the current match (if any) without touching the socket."""
+        mid, self.match_id, self._accepted = self.match_id, None, None
+        if mid and self.sio and self.sio.connected and why is None:
+            try:
+                await self.sio.emit("close-dialog", {"matchId": mid})
+            except Exception:
+                pass
 
     async def hangup(self):
-        if self.match_id:
-            await self.emit("close-dialog", {"matchId": self.match_id})
-        self.match_id = None
+        await self._drop_match(None)
+        await self.send("call", phase="idle", matchId=None)
 
     async def stop_call(self):
         if self.call:
-            await self.call.stop()
-
-    async def detach(self):
-        """Drop the browser WS without touching a running call."""
-        self.detached = True
-        if self.call:
-            # keep the call alive; just stop forwarding events to a dead socket
-            self.call.on_log = lambda m: logfile(m, "sys", cid=self.cid)
-            self.call.on_state = lambda **kw: None
-            logfile("browser ws closed; call continues", "sys", cid=self.cid)
-        else:
-            await self.close()
+            try:
+                await self.call.stop()
+            except Exception:
+                pass
+            self.call = None
+        await self._drop_match(None)
+        if self.sio and self.sio.connected:
+            try:
+                await self.sio.emit("stop-search", {})
+            except Exception:
+                pass
+        await self.send("call", phase="idle", matchId=None)
 
     async def close(self):
+        """Browser tab gone. Its RTCPeerConnections died with it, so nothing
+        upstream is worth keeping: leave the match, close every socket."""
+        self.detached = True
         await legs_stop_all(self)
-        await self.stop_call()
-        if self.sio:
-            await self.loop.run_in_executor(None, self.sio.disconnect)
-            self.sio = None
+        if self.call:
+            try:
+                await self.call.stop()
+            except Exception:
+                pass
+            self.call = None
+        await self.disconnect()
 
 
 # call integration (aiortc)
@@ -856,13 +951,13 @@ async def _dispatch(sess: "Session", msg: dict) -> None:
         elif did:
             # a remembered deviceId with no cookie: re-fetch it (does
             # not touch the shared global store)
-            acct = voisa.register(did)
+            acct = await asyncio.to_thread(voisa.register, did)
         else:
             # no identity at all: mint a FRESH one bound to this session,
             # never the global voisa_account.json default. The browser
             # persists what comes back on the `account` message, so a
             # reload keeps the same identity instead of minting again.
-            acct = voisa.create_fresh()
+            acct = await asyncio.to_thread(voisa.create_fresh)
 
         # Identity is PER SESSION. If the identity this tab asked for is
         # already held by another live session (a duplicated tab, a second
@@ -871,19 +966,14 @@ async def _dispatch(sess: "Session", msg: dict) -> None:
         if acct.get("cookie") and acct["cookie"] in _cookies_in_use(exclude=sess):
             await sess.log("that identity is in use by another session — "
                            "this session gets its own", "warn")
-            acct = voisa.create_fresh()
+            acct = await asyncio.to_thread(voisa.create_fresh)
 
         # Only tear down when the identity is actually changing. A plain
         # page load also sends `connect`; closing unconditionally killed
         # a call that was already in progress (and a peer arriving one
         # second later found a dead session).
         same_identity = (sess.cookie == acct["cookie"])
-        if (sess.call or sess.sio) and not same_identity:
-            try:
-                await sess.close()
-            except Exception:
-                pass
-        elif same_identity and sess.sio:
+        if same_identity and sess.sio and sess.sio.connected:
             # already connected as this identity — don't reconnect and
             # don't disturb a live call
             await sess.send("account", **acct)
@@ -896,34 +986,13 @@ async def _dispatch(sess: "Session", msg: dict) -> None:
         await sess.emit(msg.get("event"), msg.get("payload") or {})
 
     elif cmd == "search":
-        # language is its own event; start-search takes no payload.
-        # We still need a bridge BEFORE matching starts: the browser
-        # sends its SDP/ICE through sess.call, and by the time a
-        # start-dialog arrives the offer is already in flight.
-        lang = msg.get("lang", "en")
-        if not sess.call:
-            await start_call(sess, lang, int(msg.get("seconds") or 0),
-                             False, None, False, search=False)
-        await sess.emit("set-search-language", {"searchLanguage": lang})
-        await sess.emit("start-search", {})
+        # language is its own event; start-search takes no payload
+        await sess.search(msg.get("lang", "en"))
 
     elif cmd == "accept":
-        # Accepting a pending dialog only makes sense if something can
-        # negotiate the media. If no BridgeCall is attached, start one in
-        # "accept-only" mode: it waits for the incoming start-dialog
-        # instead of searching, then answers/offers as appropriate.
-        mid = msg.get("matchId") or sess.match_id
-        if sess.call:
-            await sess.emit("start-dialog", {"initiate": True, "matchId": mid})
-        else:
-            await sess.log("accept: no call attached — starting one to "
-                           "handle the pending dialog")
-            await start_call(sess, msg.get("lang", "en"),
-                             int(msg.get("seconds") or 0),
-                             bool(msg.get("media", True)),
-                             msg.get("audioFile"),
-                             bool(msg.get("record", False)),
-                             search=False)
+        # the dialog is accepted as soon as start-dialog arrives; this is a
+        # no-op unless that somehow did not happen
+        await sess._accept(msg.get("matchId") or sess.match_id)
 
     elif cmd == "hangup":
         await sess.hangup()
@@ -949,19 +1018,14 @@ async def _dispatch(sess: "Session", msg: dict) -> None:
                          bool(msg.get("record", False)))
 
     elif cmd == "record":
-        # toggle recording on a LIVE call (the record button)
+        # the browser holds the peer's audio and records it itself; the
+        # server only confirms there is a call to record
         want = bool(msg.get("on", True))
-        if not sess.call:
+        if want and not sess.match_id:
             await sess.log("no active call to record", "err")
-        elif want:
-            ok = sess.call.start_recording()
-            await sess.send("recording", on=True, ok=bool(ok))
-            await sess.log("recording started" if ok
-                           else "already recording", "match")
+            await sess.send("recording", on=False, ok=False)
         else:
-            n = await sess.call.stop_recording()
-            await sess.send("recording", on=False, files=n)
-            await sess.log(f"recording stopped ({n} file(s))", "match")
+            await sess.send("recording", on=want, ok=True)
 
     elif cmd == "mitm":
         # leg control for the MITM view: start/stop a leg, or hand a
@@ -985,12 +1049,8 @@ async def _dispatch(sess: "Session", msg: dict) -> None:
             await sess.log(f"mitm: bad act {act!r}", "err")
 
     elif cmd == "webrtc":
-        # The BROWSER owns the peer connection, so its SDP/ICE goes
-        # straight out to the Voisa peer.
-        if not sess.call:
-            await sess.log("webrtc: no active call", "err")
-        else:
-            sess.call.ui_webrtc(msg)
+        # the BROWSER owns the peer connection; relay its SDP/ICE upstream
+        await sess.browser_webrtc(msg)
 
     elif cmd == "stopcall":
         await sess.stop_call()
@@ -1048,7 +1108,7 @@ async def ws(websocket: WebSocket):
         # is in progress, so only the browser-facing WS is dropped here. The
         # call keeps running and is cleaned up by its own timer or by an
         # explicit `stopcall`.
-        await sess.detach()
+        await sess.close()
 
 
 def main():

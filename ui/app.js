@@ -476,7 +476,7 @@ function onEvent(name, payload) {
     showMatch(payload, "active");
     showPeer(payload, payload.initiate ? "pending" : "live");
     logLine(payload.initiate ? `Incoming: ${payload.username}` : `Matched: ${payload.username}`, "match");
-    send({ cmd: "accept", matchId: payload.matchId });
+    // the server accepts the dialog itself the moment it arrives
     rtcStart(payload.matchId)
       .catch((e) => logLine(e.message, "err"));
   }
@@ -1031,7 +1031,10 @@ async function rtcStart(matchId) {
 // inlined. The server-side path did the same (non-trickle). Sending an SDP with
 // no candidates and relying on trickle made some peers complete ICE and then
 // drop the call, because their video leg never got a usable candidate pair.
-function rtcGatherComplete(pc, ms = 4000) {
+// Candidates also trickle as they are found, so this only waits long enough to
+// inline the fast host/srflx ones; waiting for every TURN allocation delayed
+// the offer by seconds while the peer sat in silence.
+function rtcGatherComplete(pc, ms = 1200) {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
   return new Promise((resolve) => {
     const done = () => {
