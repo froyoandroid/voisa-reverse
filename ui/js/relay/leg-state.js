@@ -9,7 +9,7 @@ function legOnCall(leg, m) {
   if (phase === "negotiate") {
     if (m.offer) legOffer(leg).catch((e) => logLine(`Leg ${leg.key}: ${e.message}`, "err"));
   } else if (phase === "connected") {
-    legState(leg, "connected", "In call");
+    bridgePaint();
   } else if (phase === "searching" || phase === "matched") {
     legState(leg, "searching", "Searching");
   } else if (phase === "loopback") {
@@ -23,6 +23,8 @@ function legOnCall(leg, m) {
     // Rebuilding the pc per match is what makes the offer valid. The outbound
     // bus survives separately so the OTHER leg's feed is not unbridged.
     legState(leg, "searching", "Peer left");
+    legWatchClear(leg);
+    leg.peer = null;              // or the old name lingers next to "Searching"
     recUnfeed(leg);               // recording keeps running; the next peer plugs in
     leg.peerStream = null;
     leg.matchId = null;
@@ -34,12 +36,49 @@ function legOnCall(leg, m) {
     const otherLeg = leg.key === "A" ? LEGS.B : LEGS.A;
     if (otherLeg.fedFrom) delete otherLeg.fedFrom[leg.key];
     legInfo(leg);
+    bridgePaint();
   } else if (phase === "idle") {
     // an explicit stop: full teardown
     legState(leg, "idle", "Stopped");
     legTeardown(leg);
+    bridgePaint();
   }
   legInfo(leg);
+}
+
+// Honest bridge state. "Bridged" only when BOTH legs' connections are up;
+// one connected leg alone is "In call · waiting for B", because its stranger
+// hears nothing until the other side connects. (Before, a leg said "bridged"
+// as soon as its own remote track arrived, before ICE, with the other leg
+// still searching: "bridged but no voice".)
+function legLive(leg) { return !!(leg.pc && leg.pc.connectionState === "connected" && leg.peerStream); }
+function bridgePaint() {
+  const a = legLive(LEGS.A), b = legLive(LEGS.B);
+  for (const leg of [LEGS.A, LEGS.B]) {
+    if (!legLive(leg)) continue;
+    const other = leg.key === "A" ? LEGS.B : LEGS.A;
+    if (legLive(other)) legState(leg, "connected", "Bridged");
+    else legState(leg, "waiting", `In call · waiting for ${other.key}`);
+  }
+  const cap = $("bridgeCap");
+  if (cap) cap.textContent = !bridgeOn ? "Bridge muted" : a && b ? "Bridge on" : "Waiting for both peers";
+}
+
+// Watchdog: a match whose connection never comes up (or fails) is a stranger
+// hearing dead air. Give it 15 s, then leave and search again.
+const LEG_CONNECT_MS = 15000;
+function legWatchClear(leg) { clearTimeout(leg._watch); leg._watch = 0; }
+function legWatch(leg, pc) {
+  legWatchClear(leg);
+  leg._watch = setTimeout(() => {
+    if (leg.pc !== pc || pc.connectionState === "connected") return;
+    legGiveUp(leg, `no connection after ${LEG_CONNECT_MS / 1000} s (${pc.connectionState})`);
+  }, LEG_CONNECT_MS);
+}
+function legGiveUp(leg, reason) {
+  legWatchClear(leg);
+  logLine(`Leg ${leg.key}: ${reason}; finding another peer.`, "warn");
+  send({ cmd: "mitm", leg: leg.key, act: "next", reason });
 }
 
 async function legEnsurePc(leg) {
@@ -71,13 +110,28 @@ async function legEnsurePc(leg) {
     // hear each other through here. Only route while the other leg actually has
     // a live connection; routing into a torn-down bus silently does nothing and
     // leaves one direction dead.
+    // bridgeRewire alone does the routing: calling legRouteIncoming here as
+    // well fed the same stream into the other bus twice (double volume)
     const other = leg.key === "A" ? LEGS.B : LEGS.A;
-    legRouteIncoming(other, stream);
     logLine(`[mitm] leg ${leg.key}: peer audio -> local + onto leg ${other.key}'s outbound`, "med");
-    legState(leg, "connected", "bridged");
+    legState(leg, "searching", "Connecting");
     bridgeRewire();
+    bridgePaint();
     recFeed(leg, stream);          // no-op unless recording is on
   };
+  pc.onconnectionstatechange = () => {
+    if (leg.pc !== pc) return;
+    const st = pc.connectionState;
+    if (st === "connected") {
+      legWatchClear(leg);
+      logLine(`[mitm] leg ${leg.key}: connected`, "match");
+      bridgeRewire();
+    } else if (st === "failed") {
+      legGiveUp(leg, "connection failed");
+    }
+    bridgePaint();
+  };
+  legWatch(leg, pc);
   pc.onicecandidate = (ev) => {
     if (!ev.candidate) return;
     send({ cmd: "mitm", leg: leg.key, act: "signal",
