@@ -62,3 +62,15 @@
   #leg-A .langsel, #leg-A .meter { margin-right: 64px; }
   #leg-B .langsel, #leg-B .meter { margin-left: 64px; }
 }
+
+/* Leg B mirrors leg A across the spine (user request): badge, title and
+   pill, the info rows, the language label, the meter fill and the buttons
+   all run right to left. direction: rtl flips only the layout; every child
+   is set back to ltr so names and labels read normally. */
+@media (min-width: 721px) {
+  #leg-B > h2, #leg-B .leginfo, #leg-B .langsel, #leg-B .meter, #leg-B .row { direction: rtl; }
+  #leg-B > h2 > *, #leg-B .leginfo > *, #leg-B .langsel > *, #leg-B .row > * { direction: ltr; }
+  #leg-B > h2 > span:last-child { margin-left: 0; margin-right: auto; }
+  #leg-B .row button[data-act="newid"] { margin-left: 0; margin-right: auto; }
+  #leg-B .leginfo > b { text-align: right; }   /* value hugs its label, like A */
+}
