@@ -23,3 +23,6 @@ __pycache__/
 .venv/
 # Go build output
 bin/
+
+# per-user data: pools, saved identities (live cookies), logs
+users/
