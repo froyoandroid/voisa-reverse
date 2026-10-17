@@ -54,6 +54,15 @@ shows) and `media/`. One owner never sees another's data, even on the same
 network. Inside an owner, each tab still has its own Voisa identity
 (sessionStorage), and no identity is ever live in two sessions server-wide.
 
+Identities (user rules): opening the page creates nothing. The tab sends a
+lazy `connect`, and the identity is picked at the first action that needs
+Voisa (`needsUpstream` in commands.go: search, emit, accept, ...). The order
+is the tab's own identity, then the browser's (`users/<id>/identity.json`,
+kept 24 hours from when it was taken, so it survives closing the tab), then
+a new one. A second open tab gets its own. After 24 hours the next action
+makes a new one, never in the middle of a call. Relay legs mint brand-new
+identities on every Start (`/api/relay/fresh`), never from the pool.
+
 Old single-user data in the root is adopted once via `/?claim=<token>`, with
 the token in `users/CLAIM_TOKEN`.
 
