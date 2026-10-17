@@ -223,3 +223,61 @@ func merge(src, dst string) error {
 	}
 	return os.Rename(tmp, dst)
 }
+
+// The browser's Call identity
+
+// IdentityTTL is how long a browser keeps one Voisa identity for its calls
+// (user rule: 24 hours, for every user). After that the next call makes a
+// new one.
+const IdentityTTL = 24 * time.Hour
+
+// CallIdentity is the Voisa account this browser calls with. Since is when
+// the browser took it (Unix seconds), which starts its 24 hours: a pool
+// identity that is months old still gets its full day.
+type CallIdentity struct {
+	DeviceID string  `json:"deviceId"`
+	Cookie   string  `json:"cookie"`
+	Since    float64 `json:"since"`
+}
+
+// Valid reports whether the identity exists and is less than IdentityTTL old.
+func (c CallIdentity) Valid() bool { return c.Cookie != "" && Fresh(c.Since) }
+
+// Fresh reports whether an identity taken at since is still within its TTL.
+func Fresh(since float64) bool {
+	if since <= 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, int64(since*1e9))) < IdentityTTL
+}
+
+func (u *User) identityPath() string { return filepath.Join(u.Dir, "identity.json") }
+
+var idMu sync.Mutex
+
+// Identity returns the browser's Call identity (zero when it has none).
+func (u *User) Identity() CallIdentity {
+	idMu.Lock()
+	defer idMu.Unlock()
+	var c CallIdentity
+	if b, err := os.ReadFile(u.identityPath()); err == nil {
+		_ = json.Unmarshal(b, &c)
+	}
+	return c
+}
+
+// SetIdentity makes c the browser's Call identity, so it survives closing
+// the tab, for the rest of its 24 hours.
+func (u *User) SetIdentity(c CallIdentity) error {
+	idMu.Lock()
+	defer idMu.Unlock()
+	if err := os.MkdirAll(u.Dir, 0o700); err != nil {
+		return err
+	}
+	b, _ := json.MarshalIndent(c, "", "  ")
+	tmp := fmt.Sprintf("%s.%d.tmp", u.identityPath(), time.Now().UnixNano())
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, u.identityPath())
+}
