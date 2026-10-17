@@ -16,6 +16,7 @@ document.querySelectorAll(".nav[data-view]").forEach((b) => {
     showView(b.dataset.view);
     if (b.dataset.view === "mitm") { poolRefresh(); recListRefresh(); }
     if (b.dataset.view === "logs") logToBottom();
+    if (b.dataset.view === "settings") settingsOpen();
     const tt = $("topbarTitle");
     if (tt) tt.textContent = b.dataset.label || b.textContent.trim();
     if (SB.phone()) SB.close();          // a pick on the phone drawer closes it

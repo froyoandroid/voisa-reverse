@@ -29,11 +29,20 @@ function rtcAttachAudio(stream) {
   const el = $("peerAudio");
   if (!el || !stream) return;
   el.srcObject = stream;
+  applySink(el);
   const p = el.play();
   if (p && p.catch) p.catch((e) => logLine(`audio play blocked: ${e.message}`, "err"));
   logLine("rtc: partner audio -> playing on THIS device", "sys");
   waveStart(stream);
   if (rtc.recording) rtcRecordStart(stream);
+  // Settings > Call > Auto-record: ask the server to arm recording; its ack
+  // ("recording" on) starts the recorder
+  else if (prefs().autoRecCall) send({ cmd: "record", on: true });
+}
+// Settings > Audio > Speaker: route an <audio> element to the chosen output.
+function applySink(el) {
+  if (!el || typeof el.setSinkId !== "function") return;
+  el.setSinkId(prefs().speakerId || "").catch(() => {});
 }
 // Local meter: the server never sends phase:"level" in browser-peer mode, so
 // the wavebox reads the peer stream directly. No signalling change.
@@ -70,15 +79,39 @@ function waveStop() {
 function rtcSend(obj) {
   if (ws && ws.readyState === 1) send(Object.assign({ cmd: "webrtc" }, obj));
 }
-// Mic capture with standard VoIP processing. Single track only.
+// Mic capture with the processing chosen in Settings > Audio (all on by
+// default). A saved device that is gone falls back to the system default.
+async function micOpen() {
+  const p = prefs();
+  const audio = { echoCancellation: p.echo, noiseSuppression: p.noise, autoGainControl: p.agc, channelCount: 1 };
+  if (p.micId) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: Object.assign({ deviceId: { exact: p.micId } }, audio), video: false });
+    } catch (e) {
+      if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) throw e;
+      logLine("Saved microphone not found; using the default.", "warn");
+    }
+  }
+  return navigator.mediaDevices.getUserMedia({ audio, video: false });
+}
+// Settings changed the mic or its processing: reopen it, and swap the new
+// track into a live call (and its recording) without renegotiating.
+async function micReopen() {
+  if (!rtc.micStream) return;
+  const enabled = rtc.micTrack ? rtc.micTrack.enabled : true;
+  try { rtc.micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+  rtc.micStream = null; rtc.micTrack = null;
+  try { await micEnsure(); } catch (_) { return; }
+  rtc.micTrack.enabled = enabled;
+  if (rtc.audioSender && CallState.mode === "active") await rtc.audioSender.replaceTrack(rtc.micTrack);
+  rtcRecordAddMic();
+}
+// Mic capture. Single track only.
 async function micEnsure() {
   const live = rtc.micStream?.getAudioTracks()?.find((t) => t.readyState === "live");
   if (live) { rtc.micTrack = live; rtc.micDenied = false; return rtc.micStream; }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-      video: false,
-    });
+    const stream = await micOpen();
     const tracks = stream.getAudioTracks();
     for (let i = 1; i < tracks.length; i++) tracks[i].stop();
     rtc.micStream = stream;
@@ -103,16 +136,18 @@ function micOpenForSession() {
   micEnsure().then(async () => {
     // granted after a call already started: go live on it now
     if (rtc.audioSender && CallState.mode === "active") {
-      rtc.micTrack.enabled = true;
+      rtc.micTrack.enabled = !prefs().startMuted;
       await micAttach();
-      rtc.micState = "live"; micPaint(); logLine("mic: live", "match");
+      rtcRecordAddMic();
+      rtc.micState = rtc.micTrack.enabled ? "live" : "muted"; micPaint();
+      logLine(`mic: ${rtc.micState}`, "match");
     }
   }).catch(() => {});
 }
-// Call over: the mic stream stays open for the next call; the next call
-// starts unmuted.
+// Call over: the mic stream stays open for the next call, which starts
+// unmuted (or muted, per Settings > Audio).
 function micIdle() {
-  if (rtc.micTrack) rtc.micTrack.enabled = true;
+  if (rtc.micTrack) rtc.micTrack.enabled = !prefs().startMuted;
   rtc.micState = "off";
   micPaint();
 }
@@ -168,7 +203,8 @@ async function rtcStart(matchId) {
   rtc.audioSender = up
     ? pc.addTrack(up, mic ? rtc.micStream : rtc.upStream)
     : pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
-  if (mic) { mic.enabled = true; rtc.micState = "live"; }
+  // Settings > Audio > Start calls muted
+  if (mic) { mic.enabled = !prefs().startMuted; rtc.micState = mic.enabled ? "live" : "muted"; }
   pc.addTransceiver("video", { direction: "recvonly" });
 
   pc.ontrack = (ev) => {

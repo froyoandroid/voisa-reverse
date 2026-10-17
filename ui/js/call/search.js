@@ -12,7 +12,7 @@ $("btnSearch").onclick = () => {
 // First press keeps hunting until a partner connects. Any idle/closed
 // with no match re-fires automatically; only an explicit stop (or a real
 // call ending) goes idle. Toggle searchAuto=false to restore one-shot.
-let searchAuto = true;
+let searchAuto = prefs().keepSearching;   // Settings > Call
 let searchN = 0;
 function startSearch() {
   if (CallState.mode !== "searching" && CallState.mode !== "idle") return;
