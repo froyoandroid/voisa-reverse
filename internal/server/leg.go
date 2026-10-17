@@ -340,7 +340,7 @@ func shareNames(s *Session) {
 			continue
 		}
 		names[name] = true
-		pool.SetUsername(name, l.deviceID, l.cookie, func(m string) { logs.Write(m, "pool", "") })
+		s.user.Pool.SetUsername(name, l.deviceID, l.cookie, func(m string) { logs.Write(m, "pool", s.cid) })
 		s.send("mitm", M{"leg": l.key, "what": "identity", "deviceId": l.deviceID, "username": name})
 	}
 	for _, l := range legs {

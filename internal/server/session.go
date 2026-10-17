@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"voisa/internal/users"
 
 	"github.com/coder/websocket"
 
@@ -57,8 +58,9 @@ func cookiesInUse(exclude *Session) map[string]bool {
 // browser and Voisa. There is deliberately no second socket per call: two
 // sockets on one identity raced each other for start-dialog.
 type Session struct {
-	ws  *websocket.Conn
-	cid string
+	ws   *websocket.Conn
+	cid  string
+	user *users.User // the browser that owns this tab (owner cookie)
 
 	mu         sync.Mutex
 	sio        *sio.Client
@@ -78,8 +80,8 @@ type Session struct {
 
 const connectAttempts = 4
 
-func newSession(ws *websocket.Conn) *Session {
-	return &Session{ws: ws, cid: shortID(), legs: map[string]*Leg{}, iceCounts: map[string]int{}}
+func newSession(ws *websocket.Conn, u *users.User) *Session {
+	return &Session{ws: ws, cid: shortID(), user: u, legs: map[string]*Leg{}, iceCounts: map[string]int{}}
 }
 
 // send writes one message to the browser: {"kind", "t", "gen", ...kw}.
