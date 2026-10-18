@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"voisa/internal/account"
 )
 
 // M is a JSON object.
@@ -106,8 +105,3 @@ func truncate(s string, n int) string {
 	}
 	return s
 }
-
-// aliases so http.go reads naturally
-type accountIdentity = account.Identity
-
-var accountRegister = account.Register

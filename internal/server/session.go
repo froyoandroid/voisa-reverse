@@ -61,6 +61,7 @@ type Session struct {
 	ws   *websocket.Conn
 	cid  string
 	user *users.User // the browser that owns this tab (owner cookie)
+	ip   string      // client address, for the account-minting rate limit
 
 	mu         sync.Mutex
 	sio        *sio.Client
@@ -89,8 +90,8 @@ type tabIdentity struct {
 	since            float64
 }
 
-func newSession(ws *websocket.Conn, u *users.User) *Session {
-	return &Session{ws: ws, cid: shortID(), user: u, legs: map[string]*Leg{}, iceCounts: map[string]int{}}
+func newSession(ws *websocket.Conn, u *users.User, ip string) *Session {
+	return &Session{ws: ws, cid: shortID(), user: u, ip: ip, legs: map[string]*Leg{}, iceCounts: map[string]int{}}
 }
 
 // send writes one message to the browser: {"kind", "t", "gen", ...kw}.

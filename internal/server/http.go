@@ -4,6 +4,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,18 +51,18 @@ func New(projectRoot string) http.Handler {
 		// Identity is per session: no shared account cookie is ever served.
 		writeJSON(w, 200, M{"has_account": false, "per_session": true})
 	})
-	mux.HandleFunc("POST /api/new", apiNew)
-	mux.HandleFunc("POST /api/relay/fresh", apiRelayFresh)
+	mux.HandleFunc("POST /api/new", limited(apiNew))
+	mux.HandleFunc("POST /api/relay/fresh", limited(apiRelayFresh))
 	mux.HandleFunc("GET /api/pool", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, M{"entries": users.For(w, r).Pool.Status()})
 	})
-	mux.HandleFunc("POST /api/pool/add", apiPoolAdd)
+	mux.HandleFunc("POST /api/pool/add", limited(apiPoolAdd))
 	mux.HandleFunc("DELETE /api/pool/{device_id}", apiPoolRemove)
 	mux.HandleFunc("POST /api/pool/clear", func(w http.ResponseWriter, r *http.Request) {
 		u := users.For(w, r)
 		writeJSON(w, 200, M{"cleared": u.Pool.Clear(userLog(u, "pool"))})
 	})
-	mux.HandleFunc("POST /api/pool/resolve_names", apiResolveNames)
+	mux.HandleFunc("POST /api/pool/resolve_names", limited(apiResolveNames))
 	mux.HandleFunc("GET /api/saved", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, M{"entries": users.For(w, r).Saved.Status()})
 	})
@@ -69,7 +71,6 @@ func New(projectRoot string) http.Handler {
 	mux.HandleFunc("DELETE /api/saved/{device_id}", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, M{"removed": users.For(w, r).Saved.Remove(r.PathValue("device_id"))})
 	})
-	mux.HandleFunc("POST /api/login", apiLogin)
 
 	mux.HandleFunc("GET /api/log", apiLog)
 	mux.HandleFunc("DELETE /api/log", func(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +90,45 @@ func New(projectRoot string) http.Handler {
 
 	recordingRoutes(mux)
 
-	return withNotFound(mux)
+	return secureHeaders(sameOrigin(withNotFound(mux)))
+}
+
+// secureHeaders sets defensive response headers on every reply. The CSP is
+// strict: scripts load only from this origin (plus the one inline bootstrap
+// script, which carries a per-request nonce), the page cannot be framed, and
+// the browser talks to no other origin.
+func secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=(), payment=()")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// csp returns the Content-Security-Policy for the index, which locks the
+// page to its own origin. The inline bootstrap script is allowed by nonce.
+// Inline styles stay allowed because the UI sets element styles directly.
+// The page cannot be embedded anywhere.
+func csp(nonce, host string) string {
+	ws := ""
+	if host != "" && !strings.ContainsAny(host, " ;'\"") {
+		ws = " wss://" + host + " ws://" + host
+	}
+	return "default-src 'self'; " +
+		"script-src 'self' 'nonce-" + nonce + "'; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data:; " +
+		"media-src 'self' blob:; " +
+		"font-src 'self'; " +
+		"connect-src 'self'" + ws + "; " +
+		"object-src 'none'; " +
+		"base-uri 'self'; " +
+		"form-action 'self'; " +
+		"frame-ancestors 'none'"
 }
 
 // withNotFound answers unknown paths the way the old server did.
@@ -173,9 +212,23 @@ func index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	html := assetRe.ReplaceAllString(string(b), `$1?v=`+assetVersion()+`"`)
+	nonce := newNonce()
+	html = inlineScriptRe.ReplaceAllString(html, `<script nonce="`+nonce+`">`)
+	w.Header().Set("Content-Security-Policy", csp(nonce, r.Host))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = io.WriteString(w, html)
+}
+
+// inlineScriptRe matches a bare <script> tag, which is the inline bootstrap
+// script (every other script has a src).
+var inlineScriptRe = regexp.MustCompile(`<script>`)
+
+// newNonce returns a fresh random CSP nonce for one page load.
+func newNonce() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return base64.StdEncoding.EncodeToString(b)
 }
 
 // identities
@@ -308,22 +361,6 @@ func apiSavedUse(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, M{"deviceId": e["deviceId"], "cookie": e["cookie"], "username": e["username"]})
 }
 
-// apiLogin returns the cookie for a deviceId to the caller only; it never
-// becomes anyone else's identity.
-func apiLogin(w http.ResponseWriter, r *http.Request) {
-	did := sget(readBody(r), "deviceId")
-	if did == "" {
-		writeJSON(w, 400, M{"detail": "deviceId required"})
-		return
-	}
-	id, err := identityCall(func() (accountIdentity, error) { return accountRegister(did) })
-	if err != nil {
-		writeJSON(w, 500, M{"detail": err.Error()})
-		return
-	}
-	writeJSON(w, 200, M{"deviceId": did, "cookie": id.Cookie})
-}
-
 // logs
 
 func apiLog(w http.ResponseWriter, r *http.Request) {
@@ -351,14 +388,17 @@ func apiLog(w http.ResponseWriter, r *http.Request) {
 // websocket
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
-	// Same-origin is not enforced, matching the old server; nginx fronts it.
 	u := users.For(w, r) // before Accept, so a new owner cookie rides the 101
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	// Same-origin only: the default check rejects a cross-origin handshake
+	// (the Origin host must equal the request Host), which stops a page on
+	// another site from opening a socket as this browser. A non-browser
+	// client sends no Origin and is allowed.
+	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return
 	}
 	conn.SetReadLimit(4 << 20)
-	s := newSession(conn, u)
+	s := newSession(conn, u, clientIP(r))
 	logs.Bind(s.cid, u.Log())
 	defer logs.Unbind(s.cid)
 	sessMu.Lock()
