@@ -22,7 +22,7 @@ peer, so audio never passes through the server.
   browser's pool, saved identities, logs and recordings separate under
   `users/<id>/`.
 - **Settings**: mic, speaker and level test, echo/noise/AGC, start muted, default
-  language, keep searching, auto-record. There's also a dark/light theme.
+  language, keep searching, auto-record. Light theme by default, dark is one tap away.
 
 | Relay | Settings |
 |---|---|
@@ -32,9 +32,7 @@ peer, so audio never passes through the server.
 
 ## Relay = MITM
 
-The Relay view is a man-in-the-middle. In the code it's called `mitm`: the
-view is `data-view="mitm"`, the `/ws` command is `mitm`, and the elements are
-`#btnMitm*`.
+The Relay view is a man-in-the-middle.
 
 ```
 stranger A  <── WebRTC ──>  leg A ┐
