@@ -123,11 +123,25 @@ func For(w http.ResponseWriter, r *http.Request) *User {
 	return get(id)
 }
 
+// maxCache bounds the in-memory owner cache. Every request without a
+// cookie makes a new owner, so a client that drops its cookie could
+// otherwise grow the map without end.
+const maxCache = 10000
+
 func get(id string) *User {
 	mu.Lock()
 	defer mu.Unlock()
 	if u := cache[id]; u != nil {
 		return u
+	}
+	if len(cache) >= maxCache {
+		// Forget owners that never saved anything (no directory): they have
+		// no state to lose, and a later request rebuilds them from disk.
+		for k, v := range cache {
+			if !dirExists(v.Dir) {
+				delete(cache, k)
+			}
+		}
 	}
 	// The directory is created on first write (store, log, claim), so a
 	// visitor who never saves anything leaves nothing behind.
