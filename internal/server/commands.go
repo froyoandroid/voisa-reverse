@@ -112,15 +112,12 @@ func cmdConnect(s *Session, msg M) error {
 		s.mu.Unlock()
 		return nil
 	}
-	// The user chose this identity: it becomes the browser's identity, and its
-	// 24 hours start now.
-	if cookie == "" && did != "" {
-		acct, err := identityCall(func() (account.Identity, error) { return account.Register(did) })
-		if err != nil {
-			return err
-		}
-		cookie = acct.Cookie
-	}
+	// The tab chose this identity: it becomes the browser's identity, and its
+	// 24 hours start now. A deviceId alone is never turned into a cookie:
+	// createAccount hands back the cookie of any deviceId, so doing that here
+	// would let anyone who learns a deviceId take over its account. Only the
+	// pair (deviceId and cookie) the tab already holds is accepted, and a
+	// bare deviceId gets a new identity instead.
 	if cookie == "" {
 		return s.useIdentity(s.mint(true))
 	}
@@ -171,7 +168,11 @@ func ensureUpstream(s *Session) error {
 }
 
 // mint creates a new Voisa account. asOwner makes it the browser's identity.
+// It shares the per-client mint limit with the REST routes.
 func (s *Session) mint(asOwner bool) (users.CallIdentity, error) {
+	if !allow(s.ip) {
+		return users.CallIdentity{}, fmt.Errorf("too many new identities, wait a few seconds")
+	}
 	acct, err := identityCall(account.Fresh)
 	if err != nil {
 		return users.CallIdentity{}, err
