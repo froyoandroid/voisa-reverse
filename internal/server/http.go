@@ -33,12 +33,18 @@ var (
 	uiDir string
 )
 
-// New builds the HTTP handler for a project root (data files and ui/).
-func New(projectRoot string) http.Handler {
-	root = projectRoot
-	uiDir = filepath.Join(root, "ui")
-	logs.Init(filepath.Join(root, "voisa.log"))
-	if err := users.Init(root); err != nil {
+// New builds the HTTP handler. ui/ is read from projectRoot, and every file
+// the server writes (users/, voisa.log) goes under dataDir. They are apart so
+// the service can run as an unprivileged user that may write only its data
+// directory, while the code stays read-only. dataDir "" means projectRoot.
+func New(projectRoot, dataDir string) http.Handler {
+	if dataDir == "" {
+		dataDir = projectRoot
+	}
+	root = dataDir
+	uiDir = filepath.Join(projectRoot, "ui")
+	logs.Init(filepath.Join(dataDir, "voisa.log"))
+	if err := users.Init(dataDir); err != nil {
 		panic(err)
 	}
 

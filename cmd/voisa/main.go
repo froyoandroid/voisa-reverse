@@ -19,7 +19,8 @@ import (
 func main() {
 	host := flag.String("host", "127.0.0.1", "localhost only (do not change)")
 	port := flag.Int("port", 8765, "port")
-	root := flag.String("root", ".", "project root: ui/ and the data files")
+	root := flag.String("root", ".", "project root: ui/ (and the data, unless -data is set)")
+	data := flag.String("data", "", "data directory: users/ and voisa.log (default: -root)")
 	flag.Parse()
 
 	if *host != "127.0.0.1" && *host != "localhost" && *host != "::1" {
@@ -27,7 +28,7 @@ func main() {
 		os.Exit(2)
 	}
 	addr := fmt.Sprintf("%s:%d", *host, *port)
-	srv := &http.Server{Addr: addr, Handler: server.New(*root), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: addr, Handler: server.New(*root, *data), ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		sig := make(chan os.Signal, 1)
