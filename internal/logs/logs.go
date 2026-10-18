@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -72,12 +73,37 @@ func WriteUser(userLog, msg, level, cid string) {
 	}
 }
 
+// maxMsg caps one logged message so a client cannot flood the shared file.
+const maxMsg = 2000
+
+// sanitize keeps a message to one line. Newlines and other control bytes let
+// a client forge extra log lines (the file is one line per event, and the
+// server log is shared with the operator), so they are replaced with spaces.
+func sanitize(msg string) string {
+	if len(msg) > maxMsg {
+		msg = msg[:maxMsg] + "…"
+	}
+	var b strings.Builder
+	b.Grow(len(msg))
+	for _, r := range msg {
+		if r == '\n' || r == '\r' || r == '\t' {
+			b.WriteByte(' ')
+			continue
+		}
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 func format(msg, level, cid string) string {
 	tag := "(--)"
 	if cid != "" {
 		tag = "(" + cid + ")"
 	}
-	return fmt.Sprintf("%s %s [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), tag, level, msg)
+	return fmt.Sprintf("%s %s [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), tag, sanitize(level), sanitize(msg))
 }
 
 // Caller holds mu.
