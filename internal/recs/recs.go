@@ -38,6 +38,17 @@ const idleEnd = 20 * time.Second
 // MaxChunk caps one uploaded chunk (a 1 s Opus slice is a few KB).
 const MaxChunk = 4 << 20
 
+// Storage caps, so one browser cannot fill the server's disk. A 64 kbit/s
+// Opus recording is about 29 MB an hour, so MaxFile is roughly 7 hours.
+const (
+	MaxFile  = 200 << 20 // one recording
+	MaxOwner = 1 << 30   // all of one owner's recordings together
+	MaxLive  = 6         // recordings one owner may have open at once
+)
+
+// ErrQuota is returned when a recording or its owner is out of space.
+var ErrQuota = errors.New("recording storage limit reached")
+
 // Meta is the sidecar of one recording. Times are Unix milliseconds.
 type Meta struct {
 	Name       string `json:"name"`
@@ -126,6 +137,9 @@ func Start(dir, kind, track, group, peer, mime string) (*Meta, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	if live, used := usage(dir); live >= MaxLive || used >= MaxOwner {
+		return nil, ErrQuota
+	}
 	rnd := make([]byte, 3)
 	_, _ = rand.Read(rnd)
 	stamp := time.Now().UTC().Format("20060102-150405")
@@ -181,6 +195,12 @@ func Append(dir, name string, seq int, body io.Reader) (*Meta, error) {
 	if seq > m.Seq {
 		return m, ErrSeq
 	}
+	if m.Bytes+int64(len(data)) > MaxFile {
+		return m, ErrQuota
+	}
+	if _, used := usage(dir); used+int64(len(data)) > MaxOwner {
+		return m, ErrQuota
+	}
 	f, err := os.OpenFile(filepath.Join(dir, name), os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
@@ -224,6 +244,52 @@ func Stop(dir, name string, durationMs int64) (*Meta, error) {
 	return m, err
 }
 
+// usage counts the owner's open recordings and the bytes all files use.
+// Caller holds mu (or does not need an exact answer).
+func usage(dir string) (live int, used int64) {
+	ents, _ := os.ReadDir(dir)
+	t := now()
+	for _, e := range ents {
+		info, err := e.Info()
+		if err != nil || e.IsDir() {
+			continue
+		}
+		used += info.Size()
+		n := e.Name()
+		if strings.HasSuffix(n, ".json") || strings.HasPrefix(n, ".") {
+			continue
+		}
+		if m, err := readMeta(dir, n); err == nil && m.Ended == 0 && t-m.Updated < int64(idleEnd/time.Millisecond) {
+			live++
+		}
+	}
+	return live, used
+}
+
+// demuxer picks the ffmpeg input format from the file's first bytes. The
+// upload is untrusted, and letting ffmpeg probe the format would let a file
+// that is really an HLS playlist or a concat list make ffmpeg open other
+// files or URLs (and copy them into a recording the uploader can download).
+// Only the two formats MediaRecorder writes are accepted.
+func demuxer(p string) string {
+	f, err := os.Open(p)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	head := make([]byte, 4)
+	if _, err := io.ReadFull(f, head); err != nil {
+		return ""
+	}
+	switch {
+	case head[0] == 0x1A && head[1] == 0x45 && head[2] == 0xDF && head[3] == 0xA3: // EBML
+		return "matroska"
+	case string(head) == "OggS":
+		return "ogg"
+	}
+	return ""
+}
+
 var remuxing sync.Map
 
 // remux rewrites the container with a duration and cues (-c copy, no
@@ -238,8 +304,19 @@ func remux(dir, name string) {
 		return
 	}
 	src := filepath.Join(dir, name)
+	format := demuxer(src)
+	if format == "" {
+		return // not a MediaRecorder file: keep it as uploaded, never probe it
+	}
 	tmp := filepath.Join(dir, "."+name+".remux.webm")
-	cmd := exec.Command(ff, "-hide_banner", "-loglevel", "error", "-y", "-i", src, "-c", "copy", tmp)
+	outFmt := "webm"
+	if format == "ogg" {
+		outFmt = "ogg"
+	}
+	// the input format is forced and only plain local files may be opened
+	cmd := exec.Command(ff, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-protocol_whitelist", "file", "-f", format, "-i", src,
+		"-map", "0:a", "-c", "copy", "-f", outFmt, tmp)
 	if err := cmd.Run(); err != nil {
 		os.Remove(tmp)
 		return

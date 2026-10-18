@@ -99,6 +99,10 @@ func apiRecStart(w http.ResponseWriter, r *http.Request) {
 	u := users.For(w, r)
 	b := readBody(r)
 	m, err := recs.Start(u.Media(), sget(b, "kind"), sget(b, "track"), sget(b, "group"), sget(b, "peer"), sget(b, "mime"))
+	if errors.Is(err, recs.ErrQuota) {
+		writeJSON(w, 507, M{"detail": err.Error()})
+		return
+	}
 	if err != nil {
 		writeJSON(w, 400, M{"detail": err.Error()})
 		return
@@ -118,6 +122,8 @@ func apiRecChunk(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, recs.ErrSeq):
 		writeJSON(w, 409, M{"detail": err.Error(), "next": m.Seq})
+	case errors.Is(err, recs.ErrQuota):
+		writeJSON(w, 507, M{"detail": err.Error()})
 	case errors.Is(err, recs.ErrEnded):
 		writeJSON(w, 410, M{"detail": err.Error()})
 	case err != nil:
