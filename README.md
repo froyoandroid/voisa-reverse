@@ -10,9 +10,8 @@ peer, so audio never passes through the server.
 
 - **Call**: pick a language, press Start, and you're matched with a stranger. The
   mic opens once per tab, and you can mute or unmute it during a call.
-- **Relay**: two isolated legs (A and B), each with its own fresh identity. They
-  search independently, and Bridge connects the two strangers to each other.
-  The label only says "Bridged" once both peers are actually connected.
+- **Relay (MITM)**: a man-in-the-middle bridge between two strangers. See
+  [Relay = MITM](#relay--mitm).
 - **Recordings**: call and relay recordings stream to the server in 1 s chunks.
   ffmpeg remuxes them on stop, and they're deleted 24 h after they start. A relay
   recording saves A, B and the A+B mix.
@@ -30,6 +29,35 @@ peer, so audio never passes through the server.
 | ![Relay view](assets/screenshots/relay.png) | ![Settings view](assets/screenshots/settings.png) |
 
 <p align="center"><img src="assets/screenshots/call-mobile.png" width="300" alt="Call view on a phone"></p>
+
+## Relay = MITM
+
+The Relay view is a man-in-the-middle. In the code it's called `mitm`: the
+view is `data-view="mitm"`, the `/ws` command is `mitm`, and the elements are
+`#btnMitm*`.
+
+```
+stranger A  <── WebRTC ──>  leg A ┐
+                                  ├─ your browser (bridge: A ⇄ B)
+stranger B  <── WebRTC ──>  leg B ┘
+```
+
+1. **Start relay** starts two legs. Each leg mints a fresh identity
+   (`/api/relay/fresh`) and opens its own upstream socket, then searches on its
+   own and matches a random stranger.
+2. Each stranger thinks they're in a normal 1:1 call with that leg's identity.
+   Neither one knows about the other or about you.
+3. With **Bridge** on, the browser feeds A's incoming audio into leg B's
+   outgoing track and B's into A's. The strangers hear each other through you.
+   The label says "Bridged" only once both legs are connected. Until then it
+   shows "In call · waiting for A/B".
+4. If a match dies, or doesn't connect within 15 s, the leg sends `next`. That
+   closes the dialog and the leg requeues. The other leg keeps its stranger.
+5. **Record** captures A, B and the A+B mix as one group.
+
+Notes: a stranger hears silence while the other leg is still searching, so
+many hang up within 5 to 15 s. The server only does signalling. All audio
+routing happens in your browser's AudioContext.
 
 ## Requirements
 
