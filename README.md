@@ -122,3 +122,21 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full map.
 - There is no login. Anyone who can reach the URL can use it, so restrict access
   in nginx (basic auth, an IP allowlist) if the instance is public.
 - Data files (`users/`, `voisa.log`, media) and `bin/` are gitignored.
+
+## Disclaimer
+
+This is an independent reverse-engineering and research project. It is not
+affiliated with, endorsed by, or connected to Voisa or its developers. "Voisa"
+and related names belong to their respective owners.
+
+The repository contains only original code. No Voisa app code, APK or
+decompiled sources are included. Using it may violate Voisa's terms of
+service. The relay intercepts calls between people who don't know about it,
+and recording or relaying someone's voice without their consent may be
+illegal where you or they live. You are solely responsible for how you use
+it. It is provided as is, without warranty.
+
+## License
+
+[MIT](LICENSE) © 2026 froyoandroid. The license covers this project's own
+code only.
