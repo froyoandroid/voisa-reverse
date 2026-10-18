@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -129,6 +130,12 @@ func (p *Pool) Lease(exclude map[string]bool, log func(string)) (Entry, error) {
 
 // Add pre-creates n identities so the pool has a stock that can age.
 func (p *Pool) Add(n int, log func(string)) ([]Entry, error) {
+	if room := MaxPool - len(p.Load()); n > room {
+		n = room
+	}
+	if n <= 0 {
+		return nil, fmt.Errorf("the pool is full (%d identities)", MaxPool)
+	}
 	var made []Entry
 	for i := 0; i < n; i++ {
 		did := account.NewDeviceID()
@@ -240,7 +247,22 @@ func NewSaved(root string) *Saved {
 	return &Saved{f: file{path: filepath.Join(root, "voisa_saved.json")}}
 }
 
+// Limits on what a browser may store, so the files stay small.
+const (
+	MaxSaved = 200 // saved identities per owner, oldest dropped first
+	MaxPool  = 200 // pool identities per owner
+	maxField = 128 // deviceId, cookie and username length
+)
+
+func clip(v string) string {
+	if len(v) > maxField {
+		return v[:maxField]
+	}
+	return v
+}
+
 func (s *Saved) Add(deviceID, cookie, username string) Entry {
+	deviceID, cookie, username = clip(deviceID), clip(cookie), clip(username)
 	s.f.mu.Lock()
 	defer s.f.mu.Unlock()
 	entries := s.f.load()
@@ -260,6 +282,10 @@ func (s *Saved) Add(deviceID, cookie, username string) Entry {
 	}
 	e := Entry{"deviceId": deviceID, "cookie": cookie, "username": u, "created": account.Now(), "uses": 0}
 	entries = append(entries, e)
+	if len(entries) > MaxSaved {
+		sort.SliceStable(entries, func(i, j int) bool { return num(entries[i], "created") < num(entries[j], "created") })
+		entries = entries[len(entries)-MaxSaved:]
+	}
 	_ = s.f.save(entries)
 	return e
 }
