@@ -74,8 +74,9 @@ go build -o bin/voisa ./cmd/voisa
 | Flag     | Default     | Meaning                                    |
 |----------|-------------|--------------------------------------------|
 | `--port` | `8765`      | listen port                                |
-| `--root` | `.`         | project root: `ui/` and the data files     |
-| `--host` | `127.0.0.1` | localhost only; any other address is refused |
+| `--root` | `.`         | project root, where `ui/` is read from     |
+| `--data` | `--root`    | where `users/` and `voisa.log` are written |
+| `--host` | `127.0.0.1` | localhost only, any other address is refused |
 
 The server binds to localhost on purpose. Put nginx in front for TLS and
 WebSocket upgrades:
@@ -92,12 +93,18 @@ location / {
 
 ### systemd
 
+The service runs as its own system user, `voisa`, with no shell and no
+home. It can write only its data directory, `/var/lib/voisa`. The code stays
+root-owned, and the unit maps just `bin/` and `ui/` into the service,
+read-only, so it can't see anything else on the host.
+
 ```sh
-sudo systemctl enable --now voisa     # unit runs bin/voisa --root <app dir>
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin voisa
+sudo systemctl enable --now voisa     # bin/voisa --root <app dir> --data /var/lib/voisa
 sudo systemctl restart voisa          # after rebuilding the binary
 ```
 
-UI-only changes (`ui/`) don't need a restart; a hard refresh is enough.
+UI-only changes (`ui/`) don't need a restart. A hard refresh is enough.
 
 ## Layout
 
@@ -112,7 +119,7 @@ internal/
   recs/           server-side recordings and 24 h janitor
   logs/           voisa.log writer
 ui/               index.html, css/ (numbered, cascade order matters), js/<area>/
-users/            per-user data (gitignored)
+users/            per-user data when --data is unset (gitignored)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full map.
