@@ -1,4 +1,12 @@
 "use strict";
+// safeColor accepts only a plain CSS colour the peer's avatar may carry (a hex
+// code or an rgb()/hsl() value). The colour comes from another Voisa user over
+// the wire, so anything else (a url(), an expression) is dropped to the
+// default, keeping attacker text out of our inline styles.
+function safeColor(c) {
+  c = String(c || "").trim();
+  return /^#[0-9a-fA-F]{3,8}$|^rgba?\([\d.,\s%]+\)$|^hsla?\([\d.,\s%]+\)$|^[a-zA-Z]{3,20}$/.test(c) ? c : "";
+}
 // Partner card and match status line.
 
 // who you are connected to
@@ -20,7 +28,7 @@ function showPeer(dialog, phase) {
     avatar: dialog.avatar || peerInfo?.avatar || null,
   };
 
-  const color = (peerInfo.avatar && peerInfo.avatar.color) || "#FE7F2D";
+  const color = safeColor(peerInfo.avatar && peerInfo.avatar.color) || "#FE7F2D";
   const initial = name.trim()[0] || "?";
   const tag = phase === "live"
     ? '<span class="tag live">In call</span>'
