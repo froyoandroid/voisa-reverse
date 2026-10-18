@@ -151,6 +151,11 @@ func (l *Leg) onInitial(d M) {
 		shareNames(l.sess) // tell the session so our other legs know this name
 	}
 	l.log(fmt.Sprintf("[session] user=%s premium=%s ice=%d", py(u["username"]), py(u["premium"]), len(ice)))
+	// The leg's browser pc needs this account's STUN/TURN servers. Without
+	// them it gathers host candidates only and most matches never connect.
+	if len(ice) > 0 {
+		l.sess.send("mitm", M{"leg": l.key, "what": "ice", "iceServers": ice})
+	}
 }
 
 func (l *Leg) onStartDialog(d M) {
