@@ -46,22 +46,16 @@ function legOnCall(leg, m) {
   legInfo(leg);
 }
 
-// Honest bridge state. "Bridged" only when BOTH legs' connections are up;
-// one connected leg alone is "In call · waiting for B", because its stranger
-// hears nothing until the other side connects. (Before, a leg said "bridged"
-// as soon as its own remote track arrived, before ICE, with the other leg
-// still searching: "bridged but no voice".)
+// Bridge state, per leg: a leg whose own connection is up reads "Bridged".
+// It does not wait for the other leg. The bridge is wired the moment either
+// peer connects, and whether the other stranger stays is up to them.
 function legLive(leg) { return !!(leg.pc && leg.pc.connectionState === "connected" && leg.peerStream); }
 function bridgePaint() {
-  const a = legLive(LEGS.A), b = legLive(LEGS.B);
   for (const leg of [LEGS.A, LEGS.B]) {
-    if (!legLive(leg)) continue;
-    const other = leg.key === "A" ? LEGS.B : LEGS.A;
-    if (legLive(other)) legState(leg, "connected", "Bridged");
-    else legState(leg, "waiting", `In call · waiting for ${other.key}`);
+    if (legLive(leg)) legState(leg, "connected", "Bridged");
   }
   const cap = $("bridgeCap");
-  if (cap) cap.textContent = !bridgeOn ? "Bridge muted" : a && b ? "Bridge on" : "Waiting for both peers";
+  if (cap) cap.textContent = bridgeOn ? "Bridge on" : "Bridge muted";
 }
 
 // Watchdog: a match whose connection never comes up (or fails) is a stranger
