@@ -77,7 +77,9 @@ function legGiveUp(leg, reason) {
 
 async function legEnsurePc(leg) {
   if (leg.pc) return leg.pc;
-  const pc = new RTCPeerConnection({ iceServers: rtc.iceServers || [] });
+  // the leg's own ICE servers (sent with its session), else the tab's
+  const ice = leg.iceServers && leg.iceServers.length ? leg.iceServers : (rtc.iceServers || []);
+  const pc = new RTCPeerConnection({ iceServers: ice });
   leg.pc = pc;
 
   // The leg SENDS as well as receives now: its outbound track is the bridge bus,

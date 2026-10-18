@@ -32,6 +32,10 @@ function handle(m) {
       if (m.what === "call") legOnCall(leg, m);
       else if (m.what === "signal") legSignal(leg, m.payload || {}).catch((e) =>
         logLine(`Leg ${leg.key}: ${e.message}`, "err"));
+      else if (m.what === "ice") {
+        // this leg's own STUN/TURN servers, used by its next pc
+        if (Array.isArray(m.iceServers)) leg.iceServers = m.iceServers;
+      }
       else if (m.what === "identity") {
         // the first push can arrive before fetch-initial-data, carrying a null
         // name — never let it wipe a name we already learned
